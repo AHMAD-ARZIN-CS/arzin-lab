@@ -1,0 +1,28 @@
+{
+  "slug": "tower-of-hanoi",
+  "title": "Tower of Hanoi",
+  "topic": "4 \u00b7 Functions & recursion",
+  "difficulty": "medium",
+  "concepts": [
+    "recursion",
+    "call stack"
+  ],
+  "tests": [
+    {
+      "name": "one",
+      "input": "1\n"
+    },
+    {
+      "name": "two",
+      "input": "2\n"
+    },
+    {
+      "name": "three",
+      "input": "3\n"
+    },
+    {
+      "name": "five",
+      "input": "5\n"
+    }
+  ]
+}

@@ -26,7 +26,7 @@ Rules:
 - Do not write the full solution to a practice problem unless the request explicitly asks for a full solution.
 - End with a line "**Go deeper:**" followed by 2-3 short follow-up topics as a bullet list (omit for hints).`
 
-export type AiAction = 'explain' | 'visual' | 'error' | 'example' | 'hint' | 'compare' | 'fix' | 'optimize' | 'ask' | 'next' | 'solve' | 'check'
+export type AiAction = 'explain' | 'visual' | 'error' | 'example' | 'hint' | 'compare' | 'fix' | 'optimize' | 'ask' | 'next' | 'solve' | 'check' | 'summarize'
 
 export interface AiImage { mediaType: string; data: string }
 
@@ -46,6 +46,8 @@ export interface AiContext {
   question?: string
   /** Region circled on the whiteboard (PNG), for board actions. */
   images?: AiImage[]
+  /** Lecture slides the question is about. */
+  lecture?: { title: string; text: string }
 }
 
 const BOARD_INTRO = `The learner circled this region of their whiteboard: handwriting, a sketch, or a pasted screenshot of a problem.
@@ -86,11 +88,19 @@ Base it on the problem and their current attempt: say what is already right in t
   ask: (c) => `The learner asks: ${c.question ?? ''}`,
   solve: () => `Solve the problem step by step. Number the steps, say WHY each step is taken (which rule or idea), and box the final answer in bold. If it's a programming problem, give the solution code in one fenced block and its complexity. ${VISUAL_SVG}`,
   check: () => `Examine the learner's work like a careful tutor. Go through it step by step: for each step say ✅ correct or ❌ wrong. At the FIRST mistake, explain exactly what went wrong (sign error, wrong rule, algebra slip, off-by-one, logic bug...) and show the corrected step. Then say how the rest changes and give the correct final result. If everything is right, say so and point out anything that could be cleaner. Don't just re-solve from scratch: anchor on THEIR steps.`,
+  summarize: () => `Turn these lecture slides into study notes for the learner:
+1. **The big idea** in 2-3 sentences.
+2. **Key concepts**: each with a one-line plain-English definition and, for programming topics, a tiny C++ snippet.
+3. **Things students usually get wrong** about this material.
+4. **Check yourself**: 4-6 short questions (answers in a collapsed list at the very end).
+5. **What to practice**: which kinds of problems would build these skills.
+Stick to what the slides cover; if a slide is unclear or only an image, say so instead of guessing.`,
   next: () => `Based on the problem and the learner's attempt/results, identify 1-2 concepts they seem to be missing or should strengthen, and suggest ONE next exercise (title, short statement, 2 example tests as input/expected output) that targets it. Don't solve it.`,
 }
 
 export function buildPrompt(c: AiContext): string {
   const parts: string[] = c.images?.length ? [BOARD_INTRO, '', TASKS[c.action](c), ''] : [TASKS[c.action](c), '']
+  if (c.lecture) parts.push(`## Lecture slides: "${c.lecture.title}" (extracted text)`, c.lecture.text, '')
   if (c.problem) parts.push('## Problem statement', c.problem, '')
   if (c.file) parts.push(`## File: ${c.file} (${c.language ?? 'unknown language'})`)
   if (c.selection) {
@@ -110,7 +120,7 @@ export interface AiHandle { cancel(): void }
 /** Stream an answer. `resume` continues a previous conversation ("go deeper"). */
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
-export function ask(prompt: string, opts: { resume?: string; images?: AiImage[] }, on: {
+export function ask(prompt: string, opts: { resume?: string; images?: AiImage[]; system?: string }, on: {
   delta: (text: string) => void
   done: (r: { sessionId?: string; error?: string }) => void
 }): AiHandle {
@@ -118,7 +128,7 @@ export function ask(prompt: string, opts: { resume?: string; images?: AiImage[] 
   mkdirSync(cwd, { recursive: true })
   // Messages go in as stream-json so they can carry images (the circled whiteboard region).
   const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-    '--safe-mode', '--tools', '', '--model', AI.model, '--system-prompt', SYSTEM]
+    '--safe-mode', '--tools', '', '--model', AI.model, '--system-prompt', opts.system ?? SYSTEM]
   if (opts.resume) args.push('--resume', opts.resume)
   // If this server was started from inside another Claude Code session (e.g. the desktop app),
   // it inherits that session's internal variables. They make the CLI try to use the host

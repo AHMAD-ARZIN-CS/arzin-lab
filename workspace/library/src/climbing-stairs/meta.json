@@ -1,0 +1,28 @@
+{
+  "slug": "climbing-stairs",
+  "title": "Climbing stairs",
+  "topic": "10 \u00b7 Dynamic programming",
+  "difficulty": "easy",
+  "concepts": [
+    "DP recurrence",
+    "Fibonacci pattern"
+  ],
+  "tests": [
+    {
+      "name": "one",
+      "input": "1\n"
+    },
+    {
+      "name": "two",
+      "input": "2\n"
+    },
+    {
+      "name": "five",
+      "input": "5\n"
+    },
+    {
+      "name": "ninety",
+      "input": "90\n"
+    }
+  ]
+}

@@ -6,6 +6,9 @@ import { ask, buildPrompt, type AiContext, type AiHandle } from './ai.js'
 import { runTests, startRun, testsFor, traceFile, writeScratch, type RunControl, type TestCase } from './runner.js'
 import { execStart, getStatus, onStatus } from './sandbox.js'
 import { remove } from './files.js'
+import { generateProblems, type GenRequest } from './generate.js'
+import { importLecture, lectureText } from './lectures.js'
+import { recordAttempt } from './library.js'
 import type Docker from 'dockerode'
 import type { Duplex } from 'node:stream'
 
@@ -63,7 +66,19 @@ export function handleSocket(ws: WebSocket) {
       const tests = (m.tests as TestCase[] | undefined) ?? (await testsFor(file))
       if (!tests?.length) return send({ t: 'test-result', id: m.id, noTests: true })
       const r = await runTests(file, tests)
+      if (r.compile.ok) await recordAttempt(file, r.results.length > 0 && r.results.every((x) => x.pass)).catch(() => {})
       send({ t: 'test-result', id: m.id, ...r })
+    },
+
+    // ---------- lecture slides & generated problems ----------
+    async 'lecture-import'(m) {
+      send({ t: 'lecture-progress', id: m.id, message: 'Reading the slides in the sandbox (text + page images)…' })
+      const r = await importLecture(String(m.path))
+      send({ t: 'lecture-imported', id: m.id, ...r })
+    },
+    async 'gen-problems'(m) {
+      const r = await generateProblems(m.request as GenRequest, (message) => send({ t: 'gen-progress', id: m.id, message }))
+      send({ t: 'gen-result', id: m.id, ...r })
     },
 
     // ---------- compare original vs proposed on the same tests ----------
@@ -82,8 +97,9 @@ export function handleSocket(ws: WebSocket) {
     },
 
     // ---------- AI ----------
-    ai(m) {
-      const ctx = m.context as AiContext
+    async ai(m) {
+      const ctx = m.context as AiContext & { lectureSlug?: string }
+      if (ctx.lectureSlug && !m.resume) ctx.lecture = await lectureText(ctx.lectureSlug)
       const prompt = m.resume ? String(ctx.question ?? 'Go deeper.') + (ctx.stepState ? `\n\nCurrent execution state:\n${ctx.stepState}` : '') : buildPrompt(ctx)
       ais.set(m.id, ask(prompt, { resume: m.resume as string | undefined, images: m.resume ? undefined : ctx.images }, {
         delta: (text) => send({ t: 'ai-delta', id: m.id, text }),

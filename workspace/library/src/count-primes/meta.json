@@ -1,0 +1,33 @@
+{
+  "slug": "count-primes",
+  "title": "Count primes up to n",
+  "topic": "1 \u00b7 Basics",
+  "difficulty": "medium",
+  "concepts": [
+    "nested loops",
+    "sieve",
+    "vector<bool>"
+  ],
+  "tests": [
+    {
+      "name": "ten",
+      "input": "10\n"
+    },
+    {
+      "name": "one",
+      "input": "1\n"
+    },
+    {
+      "name": "two",
+      "input": "2\n"
+    },
+    {
+      "name": "hundred",
+      "input": "100\n"
+    },
+    {
+      "name": "million",
+      "input": "1000000\n"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "slug": "even-or-odd",
+  "title": "Even or odd",
+  "topic": "1 \u00b7 Basics",
+  "difficulty": "easy",
+  "concepts": [
+    "%",
+    "if/else"
+  ],
+  "tests": [
+    {
+      "name": "four",
+      "input": "4\n"
+    },
+    {
+      "name": "seven",
+      "input": "7\n"
+    },
+    {
+      "name": "zero",
+      "input": "0\n"
+    },
+    {
+      "name": "negative",
+      "input": "-3\n"
+    },
+    {
+      "name": "big",
+      "input": "1000000001\n"
+    }
+  ]
+}

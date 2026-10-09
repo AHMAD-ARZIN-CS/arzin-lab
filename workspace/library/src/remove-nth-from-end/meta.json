@@ -1,0 +1,29 @@
+{
+  "slug": "remove-nth-from-end",
+  "title": "Remove the k-th node from the end",
+  "topic": "5 \u00b7 Pointers & linked lists",
+  "difficulty": "medium",
+  "concepts": [
+    "dummy node",
+    "two pointers",
+    "delete"
+  ],
+  "tests": [
+    {
+      "name": "middle",
+      "input": "5\n1 2 3 4 5\n2\n"
+    },
+    {
+      "name": "head",
+      "input": "3\n7 8 9\n3\n"
+    },
+    {
+      "name": "tail",
+      "input": "3\n7 8 9\n1\n"
+    },
+    {
+      "name": "only node",
+      "input": "1\n4\n1\n"
+    }
+  ]
+}

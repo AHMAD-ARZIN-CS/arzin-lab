@@ -1,5 +1,5 @@
 import {
-  ChevronDown, Code2, FolderTree, History, Maximize2, Minimize2, Moon, PanelBottom, PanelLeft, PanelRight,
+  BookOpen, ChevronDown, Code2, FolderTree, History, Maximize2, Minimize2, Moon, PanelBottom, PanelLeft, PanelRight,
   PenLine, Play, Search, Sparkles, Square, Sun, Target, Wand2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -14,6 +14,7 @@ import { EditorArea } from './components/EditorArea'
 import { ExplainPanel } from './components/ExplainPanel'
 import { FileExplorer, starterFor } from './components/FileExplorer'
 import { HistoryPanel } from './components/HistoryPanel'
+import { LecturesPanel } from './components/LecturesPanel'
 import { NotesPanel } from './components/NotesPanel'
 import { PracticePanel } from './components/PracticePanel'
 import { Visualizer } from './components/Visualizer'
@@ -215,6 +216,7 @@ function ActivityBar() {
     { id: 'files', icon: <FolderTree size={19} />, label: 'Files' },
     { id: 'practice', icon: <Target size={19} />, label: 'Practice' },
     { id: 'boards', icon: <PenLine size={19} />, label: 'Boards' },
+    { id: 'lectures', icon: <BookOpen size={19} />, label: 'Lectures' },
     { id: 'history', icon: <History size={19} />, label: 'History' },
   ]
   return (
@@ -240,6 +242,7 @@ function SidePanel() {
       {view === 'practice' && <PracticePanel />}
       {view === 'history' && <HistoryPanel />}
       {view === 'boards' && <BoardsPanel />}
+      {view === 'lectures' && <LecturesPanel />}
     </div>
   )
 }

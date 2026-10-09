@@ -1,0 +1,28 @@
+{
+  "slug": "move-zeroes",
+  "title": "Move zeroes to the end",
+  "topic": "2 \u00b7 Arrays & vectors",
+  "difficulty": "easy",
+  "concepts": [
+    "read/write pointers",
+    "in-place"
+  ],
+  "tests": [
+    {
+      "name": "basic",
+      "input": "5\n0 1 0 3 12\n"
+    },
+    {
+      "name": "no zeroes",
+      "input": "3\n1 2 3\n"
+    },
+    {
+      "name": "all zeroes",
+      "input": "3\n0 0 0\n"
+    },
+    {
+      "name": "zero last",
+      "input": "4\n4 0 5 0\n"
+    }
+  ]
+}

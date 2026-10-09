@@ -1,0 +1,25 @@
+{
+  "slug": "word-frequency",
+  "title": "Word frequency",
+  "topic": "7 \u00b7 Hashing",
+  "difficulty": "medium",
+  "concepts": [
+    "map",
+    "custom sort",
+    "read until EOF"
+  ],
+  "tests": [
+    {
+      "name": "basic",
+      "input": "the cat and the hat and the bat\n"
+    },
+    {
+      "name": "one word",
+      "input": "hello\n"
+    },
+    {
+      "name": "ties",
+      "input": "b a c a b c\n"
+    }
+  ]
+}

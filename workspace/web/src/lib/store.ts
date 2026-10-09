@@ -1,8 +1,8 @@
 // App state in one place, with the actions that change it. Components read with useStore(selector).
 import { useSyncExternalStore } from 'react'
 import { askConfirm, askText } from '../components/Dialogs'
-import { files, practice, type LanguageInfo, type ProblemMeta, type SandboxStatus, type TreeNode } from './api'
-import { emptyBoard, fromExcalidraw } from './board'
+import { assetUrl, files, lectures, library, practice, type LanguageInfo, type ProblemMeta, type SandboxStatus, type TreeNode } from './api'
+import { emptyBoard, fromExcalidraw, INK, newId, type Item } from './board'
 import { onType, request, send } from './socket'
 import { describeStep, type TraceResult } from './trace'
 
@@ -20,7 +20,7 @@ export interface Thread {
 }
 export interface Proposal {
   file: string; title: string; original: string; proposed: string
-  kind: 'ai' | 'version'; versionId?: string
+  kind: 'ai' | 'version' | 'reference'; versionId?: string
   compare?: { running: boolean; noTests?: boolean; original?: { compile: { ok: boolean; output: string }; results: TestResult[] }; proposed?: { compile: { ok: boolean; output: string }; results: TestResult[] } }
 }
 
@@ -48,7 +48,9 @@ export interface State {
   /** Center of the screen: the code editor, or a whiteboard. */
   mode: 'code' | 'board'
   activeBoard: string | null
-  sideView: 'files' | 'practice' | 'history' | 'boards'
+  sideView: 'files' | 'practice' | 'history' | 'boards' | 'lectures'
+  /** Solved practice problems (slug → when), from my-code/progress.json. */
+  solved: Record<string, string>
   sideOpen: boolean
   rightOpen: boolean
   bottomOpen: boolean
@@ -68,7 +70,7 @@ let state: State = {
   stdin: JSON.parse(localStorage.getItem('lab.stdin') ?? '{}'),
   run: null, diagnostics: {}, trace: null, tracing: false, step: 0, playing: false, speed: 1, focusLines: null,
   threads: [], proposal: null, tests: null, problems: [],
-  mode: ui.mode ?? 'code', activeBoard: ui.activeBoard ?? null, sideView: ui.sideView ?? 'files',
+  mode: ui.mode ?? 'code', activeBoard: ui.activeBoard ?? null, sideView: ui.sideView ?? 'files', solved: {},
   sideOpen: ui.sideOpen ?? true, rightOpen: ui.rightOpen ?? true, bottomOpen: ui.bottomOpen ?? true,
   rightTab: 'visualize', bottomTab: 'output', focusMode: false, paletteOpen: false, toast: null,
 }
@@ -306,12 +308,12 @@ export function jumpFocused(dir: 1 | -1) {
 
 // ---------------- AI explanations ----------------
 
-export type AiAction = 'explain' | 'visual' | 'error' | 'example' | 'hint' | 'compare' | 'fix' | 'optimize' | 'ask' | 'next' | 'solve' | 'check'
+export type AiAction = 'explain' | 'visual' | 'error' | 'example' | 'hint' | 'compare' | 'fix' | 'optimize' | 'ask' | 'next' | 'solve' | 'check' | 'summarize'
 
 const TITLES: Record<AiAction, string> = {
   explain: 'Explain', visual: 'Visualize', error: 'Why this error', example: 'Small example', hint: 'Hint',
   compare: 'Another approach', fix: 'Suggest a fix', optimize: 'Optimize', ask: 'Question', next: 'Next exercise',
-  solve: 'Solve', check: 'Find the mistake',
+  solve: 'Solve', check: 'Find the mistake', summarize: 'Study notes',
 }
 
 export interface AskInput {
@@ -324,6 +326,8 @@ export interface AskInput {
   extraDiagnostics?: string
   /** A circled whiteboard region (PNG data URL). When set, the code context is left out. */
   image?: string
+  /** Ask about a lecture: the server adds the slide text. */
+  lectureSlug?: string
 }
 
 export function currentProblemFor(file: string | null) {
@@ -347,14 +351,18 @@ export const askAi = guard(async (input: AskInput) => {
   const id = Math.random().toString(36).slice(2)
   const snippet = (input.selection ?? input.question ?? '').trim().split('\n')[0].slice(0, 60)
   const fromBoard = !!input.image
+  const fromLecture = !!input.lectureSlug
   const thread: Thread = {
-    id, title: `${TITLES[input.action]}${input.action === 'hint' ? ` (level ${input.hintLevel ?? 1})` : ''}${snippet ? `: ${snippet}` : fromBoard ? ': circled on the board' : ''}`,
-    action: input.action, file: fromBoard ? undefined : file, lines: input.lines, image: input.image,
+    id, title: `${TITLES[input.action]}${input.action === 'hint' ? ` (level ${input.hintLevel ?? 1})` : ''}${snippet ? `: ${snippet}` : fromBoard ? ': circled on the board' : fromLecture ? `: ${input.lectureSlug!.replace(/-/g, ' ')}` : ''}`,
+    // Lecture answers save to notes/lectures/<name>.md
+    action: input.action, file: fromBoard ? undefined : fromLecture ? `lectures/${input.lectureSlug}` : file, lines: input.lines, image: input.image,
     answer: '', status: 'streaming', followUps: [],
   }
   setState((s) => ({ threads: [thread, ...s.threads], rightTab: 'explain', rightOpen: true }))
   const update = (patch: Partial<Thread>) => setState((s) => ({ threads: s.threads.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
-  const context = fromBoard
+  const context = fromLecture
+    ? { action: input.action, question: input.question, lectureSlug: input.lectureSlug }
+    : fromBoard
     ? {
         // A whiteboard question is about the picture, not whatever file happens to be open.
         action: input.action, question: input.question,
@@ -470,12 +478,62 @@ export const runTests = guard(async () => {
     if (m.t === 'error') { toast(m.message); setState({ tests: null }); return }
     if (m.compile && !m.compile.ok) setDiagnostics(file, m.compile.diagnostics)
     setState({ tests: { file, running: false, noTests: m.noTests, compile: m.compile, results: m.results ?? [] } })
+    const results = (m.results ?? []) as TestResult[]
+    if (results.length && results.every((r) => r.pass) && file.startsWith('practice/')) toast('All tests pass. Marked as solved ✓')
+    loadProblems() // refresh solved marks
   })
 })
 
 // ---------------- practice ----------------
 
-export const loadProblems = guard(async () => setState({ problems: await practice.list() }))
+export const loadProblems = guard(async () => {
+  const [problems, progress] = await Promise.all([practice.list(), library.progress()])
+  setState({ problems, solved: progress.solved })
+})
+
+/** Turn a lecture into a board: every slide image stacked like pages in a notebook,
+ *  so you can write on the slides and circle anything to ask about it. */
+export const lectureToBoard = guard(async (slug: string) => {
+  const path = `boards/lecture-${slug}.board.json`
+  if (boardList(state.tree).includes(path)) return openBoard(path)
+  const l = await lectures.get(slug)
+  const items: Item[] = []
+  const W = 960
+  let y = 0
+  for (const p of l.pages) {
+    if (p.image) {
+      // PDF pages are rendered at 1280px on the long side; keep their aspect ratio.
+      const dims = await imageSize(assetUrl(`lectures/${slug}/${p.image}`))
+      const h = dims ? (W * dims.h) / dims.w : W * 0.5625
+      items.push({ id: newId(), kind: 'image', src: assetUrl(`lectures/${slug}/${p.image}`), x: 0, y, w: W, h })
+      y += h + 48
+    } else {
+      // PowerPoint: slide text as a text block, with its pictures underneath.
+      const text = `Slide ${p.n}\n${p.text}`.trim()
+      items.push({ id: newId(), kind: 'text', x: 0, y, text, color: INK, size: 20 })
+      y += text.split('\n').length * 26 + 16
+      for (const img of p.images) {
+        const dims = await imageSize(assetUrl(`lectures/${slug}/${img}`))
+        const w = Math.min(560, dims?.w ?? 560), h = dims ? (w * dims.h) / dims.w : 320
+        items.push({ id: newId(), kind: 'image', src: assetUrl(`lectures/${slug}/${img}`), x: 0, y, w, h })
+        y += h + 16
+      }
+      y += 48
+    }
+  }
+  await files.write(path, JSON.stringify({ version: 1, paper: 'plain', items, view: { x: -40, y: -40, zoom: 0.8 } }))
+  await refreshTree()
+  openBoard(path)
+})
+
+function imageSize(src: string): Promise<{ w: number; h: number } | null> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+    img.onerror = () => resolve(null)
+    img.src = src
+  })
+}
 
 // ---------------- whiteboards ----------------
 

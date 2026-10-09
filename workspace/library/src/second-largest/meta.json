@@ -1,0 +1,32 @@
+{
+  "slug": "second-largest",
+  "title": "Second largest",
+  "topic": "2 \u00b7 Arrays & vectors",
+  "difficulty": "easy",
+  "concepts": [
+    "tracking two values",
+    "edge cases"
+  ],
+  "tests": [
+    {
+      "name": "basic",
+      "input": "5\n3 9 2 7 4\n"
+    },
+    {
+      "name": "duplicates of max",
+      "input": "4\n5 5 5 1\n"
+    },
+    {
+      "name": "all same",
+      "input": "3\n2 2 2\n"
+    },
+    {
+      "name": "negatives",
+      "input": "4\n-1 -5 -3 -2\n"
+    },
+    {
+      "name": "one",
+      "input": "1\n10\n"
+    }
+  ]
+}

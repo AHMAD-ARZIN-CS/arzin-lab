@@ -1,0 +1,28 @@
+{
+  "slug": "kth-smallest",
+  "title": "K-th smallest",
+  "topic": "8 \u00b7 Sorting & searching",
+  "difficulty": "easy",
+  "concepts": [
+    "std::sort",
+    "0-based vs 1-based"
+  ],
+  "tests": [
+    {
+      "name": "basic",
+      "input": "6 2\n7 10 4 3 20 15\n"
+    },
+    {
+      "name": "minimum",
+      "input": "3 1\n5 1 9\n"
+    },
+    {
+      "name": "maximum",
+      "input": "3 3\n5 1 9\n"
+    },
+    {
+      "name": "duplicates",
+      "input": "5 3\n2 2 1 2 3\n"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "slug": "valid-anagram",
+  "title": "Valid anagram",
+  "topic": "3 \u00b7 Strings",
+  "difficulty": "easy",
+  "concepts": [
+    "counting array",
+    "char arithmetic"
+  ],
+  "tests": [
+    {
+      "name": "anagram",
+      "input": "anagram nagaram\n"
+    },
+    {
+      "name": "not",
+      "input": "rat car\n"
+    },
+    {
+      "name": "different length",
+      "input": "ab abc\n"
+    },
+    {
+      "name": "same",
+      "input": "a a\n"
+    }
+  ]
+}

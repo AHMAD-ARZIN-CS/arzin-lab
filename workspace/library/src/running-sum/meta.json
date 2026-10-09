@@ -1,0 +1,28 @@
+{
+  "slug": "running-sum",
+  "title": "Running sum",
+  "topic": "2 \u00b7 Arrays & vectors",
+  "difficulty": "easy",
+  "concepts": [
+    "prefix sums",
+    "long long"
+  ],
+  "tests": [
+    {
+      "name": "basic",
+      "input": "4\n1 2 3 4\n"
+    },
+    {
+      "name": "negatives",
+      "input": "3\n5 -2 -3\n"
+    },
+    {
+      "name": "overflow int",
+      "input": "3\n2000000000 2000000000 2000000000\n"
+    },
+    {
+      "name": "one",
+      "input": "1\n7\n"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "slug": "fibonacci",
+  "title": "Fibonacci number",
+  "topic": "4 \u00b7 Functions & recursion",
+  "difficulty": "easy",
+  "concepts": [
+    "recursion vs iteration",
+    "overflow"
+  ],
+  "tests": [
+    {
+      "name": "zero",
+      "input": "0\n"
+    },
+    {
+      "name": "one",
+      "input": "1\n"
+    },
+    {
+      "name": "ten",
+      "input": "10\n"
+    },
+    {
+      "name": "fifty",
+      "input": "50\n"
+    },
+    {
+      "name": "ninety",
+      "input": "90\n"
+    }
+  ]
+}

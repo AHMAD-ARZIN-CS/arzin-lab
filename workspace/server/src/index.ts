@@ -10,6 +10,8 @@ import { WebSocketServer } from 'ws'
 import { DEV_WEB_PORT, PORT, ROOT, WORKSPACE_DIR } from './config.js'
 import * as files from './files.js'
 import { publicLanguages } from './languages.js'
+import { listLectures, readLecture } from './lectures.js'
+import { installProblem, listLibrary, readProgress, referenceSolution } from './library.js'
 import { createProblem, listProblems, seedRoot } from './practice.js'
 import { getBuildLog, getStatus, watchDocker } from './sandbox.js'
 import { handleSocket } from './sessions.js'
@@ -25,6 +27,24 @@ app.use((req, res, next) => {
   if (!ALLOWED_HOSTS.has(req.headers.host ?? '')) return res.status(403).send('Forbidden host')
   next()
 })
+// Images inside your code folder (lecture slides on boards). <img> tags can't send the X-Lab
+// header, so this read-only route is limited to raster images and refuses to be embedded by
+// other sites (Cross-Origin-Resource-Policy), on top of the localhost Host check above.
+const IMAGE_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' }
+app.get('/asset', async (req, res) => {
+  try {
+    const p = String(req.query.path ?? '')
+    const type = IMAGE_TYPES[path.extname(p).toLowerCase()]
+    if (!type) return res.status(415).send('images only')
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Cache-Control', 'private, max-age=3600')
+    res.type(type).send(await files.readBytes(p))
+  } catch {
+    res.status(404).send('not found')
+  }
+})
+
 app.use('/api', (req, res, next) => {
   if (req.headers['x-lab'] !== '1') return res.status(403).json({ error: 'Missing X-Lab header' })
   next()
@@ -60,6 +80,12 @@ app.get('/api/version', wrap(async (req) => ({ content: await files.readVersion(
 app.post('/api/snapshot', wrap(async (req) => { await files.snapshot(req.body.path, req.body.label ?? 'manual') }))
 app.get('/api/practice', wrap(async () => listProblems()))
 app.post('/api/practice', wrap(async (req) => createProblem(req.body)))
+app.get('/api/library', wrap(async () => listLibrary()))
+app.post('/api/library/install', wrap(async (req) => installProblem(String(req.body.slug))))
+app.get('/api/solution', wrap(async (req) => ({ content: await referenceSolution(q(req, 'slug')) })))
+app.get('/api/progress', wrap(async () => readProgress()))
+app.get('/api/lectures', wrap(async () => listLectures()))
+app.get('/api/lecture', wrap(async (req) => readLecture(q(req, 'slug'))))
 
 app.use('/api', (err: Error, _req: Request, res: Response, _next: NextFunction) => {
   const status = err instanceof files.FsError ? err.status : 500

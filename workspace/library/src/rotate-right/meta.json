@@ -1,0 +1,31 @@
+{
+  "slug": "rotate-right",
+  "title": "Rotate an array",
+  "topic": "2 \u00b7 Arrays & vectors",
+  "difficulty": "medium",
+  "concepts": [
+    "modulo indexing"
+  ],
+  "tests": [
+    {
+      "name": "by two",
+      "input": "5 2\n1 2 3 4 5\n"
+    },
+    {
+      "name": "k = n",
+      "input": "3 3\n7 8 9\n"
+    },
+    {
+      "name": "k > n",
+      "input": "4 6\n1 2 3 4\n"
+    },
+    {
+      "name": "zero",
+      "input": "3 0\n1 2 3\n"
+    },
+    {
+      "name": "one element",
+      "input": "1 100\n5\n"
+    }
+  ]
+}

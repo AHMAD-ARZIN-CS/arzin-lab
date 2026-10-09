@@ -459,7 +459,8 @@ button.st-item:hover { background: rgba(255, 255, 255, 0.12); }
 .practice, .history { display: flex; flex-direction: column; }
 .problem { padding: 2px 14px 12px; border-bottom: 1px solid var(--border); }
 .problem .md h1 { font-size: 15px; margin-top: 4px; }
-.problem-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 6px; }
+.problem-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; margin: 10px 0 6px; }
+.problem-actions .btn { min-width: 0; overflow: hidden; text-overflow: ellipsis; justify-content: center; }
 .problem-list { padding: 4px 6px 12px; }
 .group-title { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); padding: 10px 8px 4px; }
 .problem-item, .version { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: left; background: none; border: none; padding: 7px 8px; cursor: pointer; border-radius: 7px; color: var(--text-2); }
@@ -474,6 +475,34 @@ button.st-item:hover { background: rgba(255, 255, 255, 0.12); }
 .new-problem label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--muted); }
 .new-problem textarea.mono, .tests-edit textarea { font: 12px var(--mono); }
 .test-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px; }
+
+.problem-item { align-items: center; }
+.problem-item .row-name { text-align: left; }
+.seg { display: flex; gap: 2px; margin: 8px 10px 2px; padding: 3px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; }
+.seg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 26px; border: none; background: none; border-radius: 6px; color: var(--muted); cursor: pointer; font-weight: 500; font-size: 12px; }
+.seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.progress-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px 2px; }
+.progress-bar { flex: 1; height: 6px; border-radius: 6px; background: var(--surface-3); overflow: hidden; }
+.progress-bar span { display: block; height: 100%; background: var(--green); border-radius: 6px; transition: width 0.4s var(--ease); }
+.lib-head { display: flex; gap: 8px; align-items: center; padding: 6px 8px 0; }
+.lib-head input { flex: 1; height: 30px; }
+.lib-note { padding: 4px 8px 0; margin: 0; }
+.gen { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; }
+.gen label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--muted); }
+.gen-row { display: flex; gap: 8px; }
+.gen-row label { flex: 1; }
+.gen-result { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.gen p { margin: 0; }
+.pad-x { padding: 0 14px; }
+.lecture-card { margin: 8px 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); display: flex; flex-direction: column; gap: 8px; }
+.lecture-title { display: flex; gap: 6px; align-items: center; font-weight: 600; word-break: break-all; }
+.lecture-card p { margin: 0; }
+.lecture-actions { display: flex; flex-direction: column; gap: 6px; }
+.lecture-actions .btn { justify-content: flex-start; }
+.lecture-title { font-size: 12px; }
+.lecture-card .gen { padding: 0; }
+.lecture-ask input { width: 100%; }
+.danger { color: var(--red); }
 
 /* ================= notes ================= */
 .notes { height: 100%; display: flex; flex-direction: column; }

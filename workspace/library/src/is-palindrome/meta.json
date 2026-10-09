@@ -1,0 +1,33 @@
+{
+  "slug": "is-palindrome",
+  "title": "Valid palindrome",
+  "topic": "3 \u00b7 Strings",
+  "difficulty": "easy",
+  "concepts": [
+    "getline",
+    "isalnum/tolower",
+    "two pointers"
+  ],
+  "tests": [
+    {
+      "name": "panama",
+      "input": "A man, a plan, a canal: Panama\n"
+    },
+    {
+      "name": "car",
+      "input": "race a car\n"
+    },
+    {
+      "name": "cat",
+      "input": "Was it a car or a cat I saw?\n"
+    },
+    {
+      "name": "empty",
+      "input": "\n"
+    },
+    {
+      "name": "digits",
+      "input": "12321\n"
+    }
+  ]
+}

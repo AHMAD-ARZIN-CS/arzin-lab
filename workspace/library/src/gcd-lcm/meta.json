@@ -1,0 +1,33 @@
+{
+  "slug": "gcd-lcm",
+  "title": "GCD and LCM",
+  "topic": "4 \u00b7 Functions & recursion",
+  "difficulty": "easy",
+  "concepts": [
+    "functions",
+    "recursion",
+    "Euclid"
+  ],
+  "tests": [
+    {
+      "name": "basic",
+      "input": "12 18\n"
+    },
+    {
+      "name": "coprime",
+      "input": "7 13\n"
+    },
+    {
+      "name": "same",
+      "input": "5 5\n"
+    },
+    {
+      "name": "big",
+      "input": "1000000007 998244353\n"
+    },
+    {
+      "name": "one divides",
+      "input": "6 36\n"
+    }
+  ]
+}

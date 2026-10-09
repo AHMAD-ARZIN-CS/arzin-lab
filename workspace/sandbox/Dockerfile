@@ -11,6 +11,11 @@ RUN apt-get update \
       time procps less nano vim-tiny ca-certificates bash-completion \
  && rm -rf /var/lib/apt/lists/*
 
+# Lecture slides: pdftotext / pdftoppm (text + page images). Separate layer so the big one above stays cached.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends poppler-utils \
+ && rm -rf /var/lib/apt/lists/*
+
 # Tools used by the workspace: tracers + a tiny library that turns off stdout buffering,
 # so prompts like "Enter n: " appear immediately when output goes through a pipe.
 COPY tools/ /opt/lab/

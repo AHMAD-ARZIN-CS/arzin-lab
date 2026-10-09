@@ -1,0 +1,29 @@
+{
+  "slug": "shortest-path-bfs",
+  "title": "Shortest path (BFS)",
+  "topic": "12 \u00b7 Graphs",
+  "difficulty": "medium",
+  "concepts": [
+    "BFS",
+    "adjacency list",
+    "queue"
+  ],
+  "tests": [
+    {
+      "name": "path",
+      "input": "6 6\n1 2\n2 3\n3 4\n1 5\n5 4\n4 6\n1 6\n"
+    },
+    {
+      "name": "unreachable",
+      "input": "4 2\n1 2\n3 4\n1 4\n"
+    },
+    {
+      "name": "same node",
+      "input": "3 1\n1 2\n2 2\n"
+    },
+    {
+      "name": "line",
+      "input": "5 4\n1 2\n2 3\n3 4\n4 5\n1 5\n"
+    }
+  ]
+}

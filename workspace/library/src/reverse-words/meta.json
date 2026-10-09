@@ -1,0 +1,24 @@
+{
+  "slug": "reverse-words",
+  "title": "Reverse the words",
+  "topic": "3 \u00b7 Strings",
+  "difficulty": "medium",
+  "concepts": [
+    "stringstream",
+    "vector<string>"
+  ],
+  "tests": [
+    {
+      "name": "basic",
+      "input": "the sky is blue\n"
+    },
+    {
+      "name": "extra spaces",
+      "input": "  hello   world  \n"
+    },
+    {
+      "name": "one word",
+      "input": "single\n"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "slug": "first-unique-char",
+  "title": "First unique character",
+  "topic": "7 \u00b7 Hashing",
+  "difficulty": "easy",
+  "concepts": [
+    "frequency counting",
+    "two passes"
+  ],
+  "tests": [
+    {
+      "name": "leetcode",
+      "input": "leetcode\n"
+    },
+    {
+      "name": "loveleetcode",
+      "input": "loveleetcode\n"
+    },
+    {
+      "name": "none",
+      "input": "aabb\n"
+    },
+    {
+      "name": "one",
+      "input": "z\n"
+    }
+  ]
+}

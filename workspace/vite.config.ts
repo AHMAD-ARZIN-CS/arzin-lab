@@ -11,6 +11,7 @@ export default defineConfig({
     host: '127.0.0.1',   // local only: this app can run code
     proxy: {
       '/api': 'http://127.0.0.1:4317',
+      '/asset': 'http://127.0.0.1:4317',
       '/ws': { target: 'ws://127.0.0.1:4317', ws: true },
     },
   },

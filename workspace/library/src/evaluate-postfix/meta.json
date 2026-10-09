@@ -1,0 +1,29 @@
+{
+  "slug": "evaluate-postfix",
+  "title": "Evaluate postfix",
+  "topic": "6 \u00b7 Stacks & queues",
+  "difficulty": "medium",
+  "concepts": [
+    "stack",
+    "stringstream",
+    "stoll"
+  ],
+  "tests": [
+    {
+      "name": "basic",
+      "input": "3 4 + 2 *\n"
+    },
+    {
+      "name": "division",
+      "input": "4 13 5 / +\n"
+    },
+    {
+      "name": "negative",
+      "input": "2 -3 * 1 -\n"
+    },
+    {
+      "name": "long",
+      "input": "10 6 9 3 + -11 * / * 17 + 5 +\n"
+    }
+  ]
+}

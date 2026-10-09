@@ -1,0 +1,32 @@
+{
+  "slug": "fast-power",
+  "title": "Fast power (mod)",
+  "topic": "4 \u00b7 Functions & recursion",
+  "difficulty": "medium",
+  "concepts": [
+    "binary exponentiation",
+    "modular arithmetic"
+  ],
+  "tests": [
+    {
+      "name": "small",
+      "input": "2 10 1000\n"
+    },
+    {
+      "name": "zero exponent",
+      "input": "5 0 7\n"
+    },
+    {
+      "name": "mod one",
+      "input": "3 5 1\n"
+    },
+    {
+      "name": "huge exponent",
+      "input": "2 1000000000000000000 1000000007\n"
+    },
+    {
+      "name": "base zero",
+      "input": "0 5 13\n"
+    }
+  ]
+}

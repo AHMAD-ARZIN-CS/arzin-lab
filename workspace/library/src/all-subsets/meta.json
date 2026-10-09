@@ -1,0 +1,28 @@
+{
+  "slug": "all-subsets",
+  "title": "All subsets",
+  "topic": "9 \u00b7 Backtracking",
+  "difficulty": "medium",
+  "concepts": [
+    "backtracking",
+    "recursion tree"
+  ],
+  "tests": [
+    {
+      "name": "three",
+      "input": "3\n1 2 3\n"
+    },
+    {
+      "name": "empty",
+      "input": "0\n"
+    },
+    {
+      "name": "one",
+      "input": "1\n5\n"
+    },
+    {
+      "name": "four",
+      "input": "4\n-2 0 3 9\n"
+    }
+  ]
+}

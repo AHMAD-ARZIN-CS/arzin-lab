@@ -1,0 +1,31 @@
+{
+  "slug": "valid-parentheses",
+  "title": "Valid parentheses",
+  "topic": "6 \u00b7 Stacks & queues",
+  "difficulty": "easy",
+  "concepts": [
+    "std::stack"
+  ],
+  "tests": [
+    {
+      "name": "simple",
+      "input": "()[]{}\n"
+    },
+    {
+      "name": "nested",
+      "input": "{[()]}\n"
+    },
+    {
+      "name": "crossed",
+      "input": "([)]\n"
+    },
+    {
+      "name": "unclosed",
+      "input": "(((\n"
+    },
+    {
+      "name": "extra close",
+      "input": "())\n"
+    }
+  ]
+}

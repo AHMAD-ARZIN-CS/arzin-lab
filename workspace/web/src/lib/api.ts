@@ -42,6 +42,27 @@ export const files = {
   snapshot: (path: string, label: string) => api('/api/snapshot', { method: 'POST', json: { path, label } }),
 }
 
+export interface LibraryProblem { slug: string; title: string; topic: string; difficulty: string; concepts: string[]; testCount: number; installed: boolean; solved: boolean }
+export interface LectureMeta { slug: string; title: string; source: string; kind: string; pageCount: number; hasImages: boolean; warnings: string[]; pending?: boolean }
+export interface LecturePage { n: number; text: string; image: string | null; images: string[] }
+export interface Lecture { slug: string; title: string; source: string; kind: string; pages: LecturePage[]; warnings: string[] }
+export interface Progress { solved: Record<string, string>; attempts: Record<string, number> }
+
+export const library = {
+  list: () => api<LibraryProblem[]>('/api/library'),
+  install: (slug: string) => api<{ folder: string; starter: string }>('/api/library/install', { method: 'POST', json: { slug } }),
+  solution: (slug: string) => api<{ content: string }>(`/api/solution?slug=${encodeURIComponent(slug)}`).then((r) => r.content),
+  progress: () => api<Progress>('/api/progress'),
+}
+
+export const lectures = {
+  list: () => api<LectureMeta[]>('/api/lectures'),
+  get: (slug: string) => api<Lecture>(`/api/lecture?slug=${encodeURIComponent(slug)}`),
+}
+
+/** URL for an image inside your code folder (used by boards for lecture slides). */
+export const assetUrl = (path: string) => `/asset?path=${encodeURIComponent(path)}`
+
 export const practice = {
   list: () => api<ProblemMeta[]>('/api/practice'),
   create: (p: { title: string; statement: string; starter: string; language: string; tests: { input: string; expected: string }[] }) =>

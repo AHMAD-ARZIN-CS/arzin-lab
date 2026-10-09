@@ -38,15 +38,15 @@ export function DiffView() {
     <div className="diff-view">
       <div className="diff-bar">
         <div className="diff-title">
-          <strong>{p.kind === 'ai' ? 'Proposed change' : 'Older version'}</strong>
+          <strong>{p.kind === 'ai' ? 'Proposed change' : p.kind === 'reference' ? 'Your solution vs the reference' : 'Older version'}</strong>
           <span className="muted"> · {p.title}</span>
-          <div className="diff-legend"><span>Left: your current <code>{p.file}</code></span><span>Right: {p.kind === 'ai' ? 'proposal (you can edit it)' : 'that version'}</span></div>
+          <div className="diff-legend"><span>Left: your current <code>{p.file}</code></span><span>Right: {p.kind === 'ai' ? 'proposal (you can edit it)' : p.kind === 'reference' ? 'reference solution' : 'that version'}</span></div>
         </div>
         <div className="diff-actions">
           <button className="btn" onClick={compareProposal} disabled={c?.running} title="Run the same tests against both versions">{c?.running ? 'Testing both…' : 'Test both'}</button>
           <button className="btn" onClick={saveProposalAs} title="Keep yours unchanged; save the proposal as a new file">Save as new file</button>
-          <button className="btn primary" onClick={applyProposal} title="Your current version is saved in History first">{p.kind === 'ai' ? 'Apply' : 'Restore this version'}</button>
-          <button className="btn ghost" onClick={() => setState({ proposal: null })}>Discard</button>
+          <button className="btn primary" onClick={applyProposal} title="Your current version is saved in History first">{p.kind === 'ai' ? 'Apply' : p.kind === 'reference' ? 'Replace mine with it' : 'Restore this version'}</button>
+          <button className="btn ghost" onClick={() => setState({ proposal: null })}>{p.kind === 'reference' ? 'Close' : 'Discard'}</button>
         </div>
       </div>
       <div className="diff-host" ref={host} />

@@ -1,0 +1,33 @@
+{
+  "slug": "sum-of-digits",
+  "title": "Sum of digits",
+  "topic": "1 \u00b7 Basics",
+  "difficulty": "easy",
+  "concepts": [
+    "while loop",
+    "% and /",
+    "long long"
+  ],
+  "tests": [
+    {
+      "name": "small",
+      "input": "12345\n"
+    },
+    {
+      "name": "zero",
+      "input": "0\n"
+    },
+    {
+      "name": "single digit",
+      "input": "9\n"
+    },
+    {
+      "name": "10^18",
+      "input": "1000000000000000000\n"
+    },
+    {
+      "name": "long",
+      "input": "987654321987654321\n"
+    }
+  ]
+}

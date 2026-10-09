@@ -1,0 +1,27 @@
+{
+  "slug": "longest-common-subsequence",
+  "title": "Longest common subsequence",
+  "topic": "10 \u00b7 Dynamic programming",
+  "difficulty": "medium",
+  "concepts": [
+    "2D DP table"
+  ],
+  "tests": [
+    {
+      "name": "classic",
+      "input": "abcde ace\n"
+    },
+    {
+      "name": "same",
+      "input": "abc abc\n"
+    },
+    {
+      "name": "none",
+      "input": "abc def\n"
+    },
+    {
+      "name": "longer",
+      "input": "AGGTAB GXTXAYB\n"
+    }
+  ]
+}

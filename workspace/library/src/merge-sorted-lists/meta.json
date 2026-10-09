@@ -1,0 +1,28 @@
+{
+  "slug": "merge-sorted-lists",
+  "title": "Merge two sorted lists",
+  "topic": "5 \u00b7 Pointers & linked lists",
+  "difficulty": "medium",
+  "concepts": [
+    "relinking pointers",
+    "dummy node"
+  ],
+  "tests": [
+    {
+      "name": "interleave",
+      "input": "3\n1 3 5\n3\n2 4 6\n"
+    },
+    {
+      "name": "one empty",
+      "input": "0\n2\n1 2\n"
+    },
+    {
+      "name": "both empty",
+      "input": "0\n0\n"
+    },
+    {
+      "name": "duplicates",
+      "input": "3\n1 1 4\n2\n1 3\n"
+    }
+  ]
+}

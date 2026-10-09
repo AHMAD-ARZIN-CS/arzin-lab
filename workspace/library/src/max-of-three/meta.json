@@ -1,0 +1,27 @@
+{
+  "slug": "max-of-three",
+  "title": "Largest of three",
+  "topic": "1 \u00b7 Basics",
+  "difficulty": "easy",
+  "concepts": [
+    "comparisons"
+  ],
+  "tests": [
+    {
+      "name": "increasing",
+      "input": "1 2 3\n"
+    },
+    {
+      "name": "first",
+      "input": "9 -2 4\n"
+    },
+    {
+      "name": "negatives",
+      "input": "-5 -5 -7\n"
+    },
+    {
+      "name": "all equal",
+      "input": "7 7 7\n"
+    }
+  ]
+}

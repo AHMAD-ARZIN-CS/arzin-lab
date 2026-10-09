@@ -1,0 +1,28 @@
+{
+  "slug": "reverse-array",
+  "title": "Reverse an array",
+  "topic": "2 \u00b7 Arrays & vectors",
+  "difficulty": "easy",
+  "concepts": [
+    "two pointers",
+    "swap"
+  ],
+  "tests": [
+    {
+      "name": "five",
+      "input": "5\n1 2 3 4 5\n"
+    },
+    {
+      "name": "one",
+      "input": "1\n42\n"
+    },
+    {
+      "name": "two",
+      "input": "2\n-1 8\n"
+    },
+    {
+      "name": "even length",
+      "input": "6\n3 1 4 1 5 9\n"
+    }
+  ]
+}

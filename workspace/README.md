@@ -90,6 +90,26 @@ Boards are notebooks saved as `my-code/boards/<name>.board.json`.
 - **Circle anything with the lasso** (L), then use **Ask AI → Solve · Explain · Visualize · Find the mistake · Ask…**. Exactly what's inside the lasso is sent as an image, and the answer appears in Explain with a thumbnail of what the AI saw. The AI first writes down what it read, so you can catch handwriting it misread. *Visualize* answers can include diagrams (SVG, sanitized). The lasso also moves or deletes what it caught.
 - Whiteboards from the old Excalidraw panel were imported automatically, and the original files were left untouched.
 
+## Problem library
+
+**Practice → Library** has 40 C++ problems in a learning order: Basics → Arrays & vectors → Strings → Functions & recursion → Pointers & linked lists → Stacks & queues → Hashing → Sorting & searching → Backtracking → Dynamic programming → Trees → Graphs.
+
+- Clicking a problem copies it into `my-code/practice/<name>/`. Your code is never overwritten if you reinstall.
+- **Every expected output was produced by running a reference solution in the sandbox**, not typed by hand (`scripts/build-library.ts`). Every starter is checked to compile. To add problems, put them in `library/src/` and run `npx tsx scripts/build-library.ts`.
+- Passing all tests marks a problem **solved ✓**. Progress is saved in `my-code/progress.json`.
+- **Reference solution** shows it as a diff next to your code, and only after a confirmation.
+
+## Lecture slides
+
+**Lectures** (left rail): upload or drop PDF, PPTX, Markdown or text slides. They are read **inside the sandbox**: `pdftotext` and `pdftoppm` for PDFs, slide XML for PPTX. Files land in `my-code/lectures/<name>/`.
+
+- **Open as board**: the slides become notebook pages. Write on them, then circle anything and ask the AI.
+- **Study notes**: key concepts, common mistakes, and check-yourself questions. You can save them to notes.
+- **Practice problems**: the AI writes problems based on the slides along with a reference solution. The sandbox compiles and runs that solution to produce the expected outputs, and anything that doesn't compile or crashes is dropped. You can also generate problems from any topic under Practice → Generate.
+- **Ask about this lecture**: questions answered using the slide text.
+
+PDF works best. PPTX gives text and pictures, but not the exact layout; for that, export to PDF.
+
 ## Learning features
 
 - **Practice** tab: problems are folders in `my-code/practice/<name>/` containing `problem.md`, `tests.json` and your code. Run the tests to see expected vs actual output, time and memory per case. **Visualize with this input** debugs one failing case. Hints get stronger one level at a time (nudge, approach, walkthrough, full solution), and the full solution needs a confirmation. **+ My own problem** takes a pasted statement, starter code and test cases. **What should I practice next?** suggests a targeted exercise.

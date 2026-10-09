@@ -1,0 +1,28 @@
+{
+  "slug": "count-vowels",
+  "title": "Count vowels",
+  "topic": "3 \u00b7 Strings",
+  "difficulty": "easy",
+  "concepts": [
+    "char",
+    "range-based for"
+  ],
+  "tests": [
+    {
+      "name": "hello",
+      "input": "Hello World\n"
+    },
+    {
+      "name": "none",
+      "input": "rhythm\n"
+    },
+    {
+      "name": "caps",
+      "input": "AEIOU aeiou\n"
+    },
+    {
+      "name": "empty",
+      "input": "\n"
+    }
+  ]
+}

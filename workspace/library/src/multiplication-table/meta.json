@@ -1,0 +1,24 @@
+{
+  "slug": "multiplication-table",
+  "title": "Multiplication table",
+  "topic": "1 \u00b7 Basics",
+  "difficulty": "easy",
+  "concepts": [
+    "for loop",
+    "formatting output"
+  ],
+  "tests": [
+    {
+      "name": "seven",
+      "input": "7\n"
+    },
+    {
+      "name": "one",
+      "input": "1\n"
+    },
+    {
+      "name": "twenty",
+      "input": "20\n"
+    }
+  ]
+}

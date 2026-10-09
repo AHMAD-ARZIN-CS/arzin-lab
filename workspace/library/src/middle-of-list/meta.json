@@ -1,0 +1,28 @@
+{
+  "slug": "middle-of-list",
+  "title": "Middle of a linked list",
+  "topic": "5 \u00b7 Pointers & linked lists",
+  "difficulty": "easy",
+  "concepts": [
+    "pointers",
+    "slow/fast pointers"
+  ],
+  "tests": [
+    {
+      "name": "odd",
+      "input": "5\n1 2 3 4 5\n"
+    },
+    {
+      "name": "even",
+      "input": "6\n1 2 3 4 5 6\n"
+    },
+    {
+      "name": "one",
+      "input": "1\n9\n"
+    },
+    {
+      "name": "two",
+      "input": "2\n4 8\n"
+    }
+  ]
+}
