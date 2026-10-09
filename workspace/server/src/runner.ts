@@ -74,9 +74,25 @@ export async function compile(rel: string, lang: Language, srcPath = toContainer
   return { ok: r.code === 0, output, diagnostics: parseDiagnostics(output, 'compile'), ms: Date.now() - t0 }
 }
 
-/** Wrap a command with limits. Writes its process-group id so Stop can kill the whole group. */
-function limited(cmd: string[], id: string, cpu: number, wall: number) {
-  const script = `mkdir -p /tmp/lab/run; echo $$ > /tmp/lab/run/${id}.pid; ulimit -t ${cpu}; ulimit -f 200000; exec timeout -s KILL ${wall} "$@"`
+/** Wrap a command with limits, and set up its stdin:
+ *  - `inputFile` given: stdin comes from that file, so the program sees a real end-of-input.
+ *  - otherwise: stdin is a named pipe (FIFO) fed by `cat` from our connection. Typing goes to
+ *    the program live; "EOF" kills the feeder, which closes the pipe.
+ *  (We never half-close the Docker connection itself: Docker would end the output stream too.)
+ *  `timeout` runs the program in its own process group, whose id is saved so Stop can kill it all. */
+function limited(cmd: string[], id: string, cpu: number, wall: number, inputFile?: string) {
+  const d = '/tmp/lab/run'
+  const script = inputFile
+    ? `mkdir -p ${d}; ulimit -t ${cpu}; ulimit -f 200000
+       timeout -s KILL ${wall} "$@" < '${inputFile}' & p=$!; echo $p > ${d}/${id}.pid
+       wait $p`
+    : `mkdir -p ${d}; f=${d}/${id}.in; mkfifo $f; ulimit -t ${cpu}; ulimit -f 200000
+       exec 3<&0
+       timeout -s KILL ${wall} "$@" < $f & p=$!; echo $p > ${d}/${id}.pid
+       cat <&3 > $f & c=$!; echo $c > ${d}/${id}.feed
+       wait $p; code=$?
+       kill $c 2>/dev/null; rm -f $f
+       exit $code`
   return ['sh', '-c', script, 'sh', ...cmd]
 }
 
@@ -100,7 +116,13 @@ export async function startRun(rel: string, stdin: string, h: RunHandlers): Prom
 
   const id = crypto.randomBytes(6).toString('hex')
   const out = buildDir(rel)
-  const cmd = limited(lang.run(toContainerPath(rel), out), id, LIMITS.runCpuSeconds, LIMITS.runWallSeconds)
+  // Input box text → a file the program reads to the end. Empty → interactive typing.
+  let inputFile: string | undefined
+  if (stdin) {
+    await fs.writeFile(path.join(META_DIR, 'tmp', `${id}.stdin`), stdin.endsWith('\n') ? stdin : stdin + '\n')
+    inputFile = toContainerPath(`.lab/tmp/${id}.stdin`)
+  }
+  const cmd = limited(lang.run(toContainerPath(rel), out), id, LIMITS.runCpuSeconds, LIMITS.runWallSeconds, inputFile)
   const workdir = path.posix.dirname(toContainerPath(rel))
   const { exec, stream } = await execStart(cmd, { stdin: true, env: lang.env, workdir })
   const t0 = Date.now()
@@ -111,20 +133,15 @@ export async function startRun(rel: string, stdin: string, h: RunHandlers): Prom
     if (ended) return
     ended = true
     const code = await exitCode(exec)
+    if (inputFile) fs.rm(path.join(META_DIR, 'tmp', `${id}.stdin`), { force: true }).catch(() => {})
     h.onExit({ code, description: describeExit(code), ms: Date.now() - t0, diagnostics: parseDiagnostics(stderrAll, 'runtime') })
   })
-  // Input box text goes in first. If it was provided, close stdin so programs that
-  // "read until end of input" finish; if it was empty, keep stdin open for typing.
-  if (stdin) {
-    stream.write(stdin.endsWith('\n') ? stdin : stdin + '\n')
-    stream.end()
-  }
+  const kill = (what: 'pid' | 'feed', group: boolean) =>
+    execCollect(['sh', '-c', `p=$(cat /tmp/lab/run/${id}.${what} 2>/dev/null) && { kill -KILL ${group ? '-$p' : '$p'} 2>/dev/null || kill -KILL $p; }; true`])
   return {
-    write: (data) => { if (!ended && stream.writable) stream.write(data) },
-    eof: () => { if (stream.writable) stream.end() },
-    stop: async () => {
-      await execCollect(['sh', '-c', `kill -KILL -- -$(cat /tmp/lab/run/${id}.pid) 2>/dev/null; true`])
-    },
+    write: (data) => { if (!ended && !inputFile) stream.write(data) },
+    eof: () => { if (!inputFile) kill('feed', false).catch(() => {}) },
+    stop: async () => { await kill('pid', true) },
   }
 }
 

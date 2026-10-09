@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { PassThrough, type Duplex } from 'node:stream'
 import Docker from 'dockerode'
-import { CONTAINER, CONTAINER_WORKDIR, IMAGE, LIMITS, ROOT, SANDBOX_DIR } from './config.js'
+import { CONTAINER, CONTAINER_WORKDIR, IMAGE, LIMITS, META_DIR, ROOT, SANDBOX_DIR } from './config.js'
 
 export const docker = new Docker()
 
@@ -153,6 +153,7 @@ export async function execStart(cmd: string[], opts: ExecOptions = {}) {
     WorkingDir: opts.workdir ?? CONTAINER_WORKDIR,
   })
   const stream = (await exec.start({ hijack: true, stdin: opts.stdin ?? false, Tty: opts.tty ?? false })) as Duplex
+  stream.on('error', () => {}) // a killed program can reset the connection; the exit code tells the story
   return { exec, stream }
 }
 
@@ -173,15 +174,29 @@ export async function exitCode(exec: Docker.Exec): Promise<number> {
   return -1
 }
 
-/** Run a command to completion and collect its output. */
+/** Run a command to completion and collect its output (capped at ~1 MB per stream).
+ *  `input` is written to a file and redirected with `<`: half-closing the Docker connection
+ *  to signal end-of-input would make Docker end the output stream early. */
 export async function execCollect(cmd: string[], opts: ExecOptions & { input?: string } = {}) {
-  const { exec, stream } = await execStart(cmd, { ...opts, stdin: opts.input !== undefined })
-  let stdout = '', stderr = ''
-  const done = new Promise<void>((resolve) => stream.on('end', resolve).on('close', resolve))
-  demux(stream, (s) => (stdout += s), (s) => (stderr += s))
-  if (opts.input !== undefined) { stream.write(opts.input); stream.end() }
-  await done
-  return { stdout, stderr, code: await exitCode(exec) }
+  let inFile: string | null = null
+  if (opts.input !== undefined) {
+    const name = `in-${crypto.randomBytes(6).toString('hex')}`
+    inFile = path.join(META_DIR, 'tmp', name)
+    fs.mkdirSync(path.dirname(inFile), { recursive: true })
+    fs.writeFileSync(inFile, opts.input)
+    cmd = ['sh', '-c', 'f=$1; shift; exec "$@" < "$f"', 'sh', `${CONTAINER_WORKDIR}/.lab/tmp/${name}`, ...cmd]
+  }
+  try {
+    const { exec, stream } = await execStart(cmd, opts)
+    let stdout = '', stderr = ''
+    const CAP = 1_000_000
+    const done = new Promise<void>((resolve) => stream.on('end', resolve).on('close', resolve))
+    demux(stream, (s) => { if (stdout.length < CAP) stdout += s }, (s) => { if (stderr.length < CAP) stderr += s })
+    await done
+    return { stdout, stderr, code: await exitCode(exec) }
+  } finally {
+    if (inFile) fs.rmSync(inFile, { force: true })
+  }
 }
 
 /** Translate container paths (/work/foo.cpp) back to workspace paths (foo.cpp). */
