@@ -1,0 +1,24 @@
+{
+  "title": "Reverse a linked list",
+  "topic": "data structures",
+  "difficulty": "medium",
+  "language": "cpp",
+  "starter": "main.cpp",
+  "tests": [
+    {
+      "name": "four",
+      "input": "4\n1 2 3 4\n",
+      "expected": "4 3 2 1"
+    },
+    {
+      "name": "one",
+      "input": "1\n7\n",
+      "expected": "7"
+    },
+    {
+      "name": "two",
+      "input": "2\n5 6\n",
+      "expected": "6 5"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "title": "FizzBuzz",
+  "topic": "fundamentals",
+  "difficulty": "easy",
+  "language": "cpp",
+  "starter": "main.cpp",
+  "tests": [
+    {
+      "name": "n = 5",
+      "input": "5\n",
+      "expected": "1\n2\nFizz\n4\nBuzz"
+    },
+    {
+      "name": "n = 15",
+      "input": "15\n",
+      "expected": "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz"
+    },
+    {
+      "name": "n = 1",
+      "input": "1\n",
+      "expected": "1"
+    }
+  ]
+}

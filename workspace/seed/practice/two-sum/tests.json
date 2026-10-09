@@ -1,0 +1,29 @@
+{
+  "title": "Two Sum",
+  "topic": "algorithms",
+  "difficulty": "easy",
+  "language": "cpp",
+  "starter": "main.cpp",
+  "tests": [
+    {
+      "name": "example",
+      "input": "4\n2 7 11 15\n9\n",
+      "expected": "0 1"
+    },
+    {
+      "name": "middle pair",
+      "input": "3\n3 2 4\n6\n",
+      "expected": "1 2"
+    },
+    {
+      "name": "same value twice",
+      "input": "2\n3 3\n6\n",
+      "expected": "0 1"
+    },
+    {
+      "name": "negatives",
+      "input": "5\n-3 4 3 90 -1\n0\n",
+      "expected": "0 2"
+    }
+  ]
+}

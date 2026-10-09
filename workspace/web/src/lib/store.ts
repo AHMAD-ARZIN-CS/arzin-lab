@@ -1,0 +1,462 @@
+// App state in one place, with the actions that change it. Components read with useStore(selector).
+import { useSyncExternalStore } from 'react'
+import { askConfirm, askText } from '../components/Dialogs'
+import { files, practice, type LanguageInfo, type ProblemMeta, type SandboxStatus, type TreeNode } from './api'
+import { onType, request, send } from './socket'
+import { describeStep, type TraceResult } from './trace'
+
+export interface Diagnostic { file: string; line: number; col?: number; severity: 'error' | 'warning' | 'note'; message: string; phase: 'compile' | 'runtime' }
+export interface OpenFile { path: string; content: string; saved: string }
+export interface OutChunk { kind: 'stdout' | 'stderr' | 'stdin' | 'info' | 'compile' | 'error'; text: string }
+export interface RunState { id: string; file: string; status: 'compiling' | 'running' | 'done'; chunks: OutChunk[]; exit?: { code: number; description: string; ms: number } }
+export interface TestResult { name: string; input: string; expected: string; actual: string; stderr: string; pass: boolean; description: string; wallMs: number | null; maxRssKb: number | null; timedOut: boolean; samples: number[] }
+export interface TestRun { file: string; running: boolean; noTests?: boolean; compile?: { ok: boolean; output: string }; results: TestResult[] }
+export interface Thread {
+  id: string; title: string; action: string; file?: string; lines?: [number, number]
+  answer: string; status: 'streaming' | 'done' | 'error'; error?: string; sessionId?: string; followUps: { q: string; a: string }[]
+}
+export interface Proposal {
+  file: string; title: string; original: string; proposed: string
+  kind: 'ai' | 'version'; versionId?: string
+  compare?: { running: boolean; noTests?: boolean; original?: { compile: { ok: boolean; output: string }; results: TestResult[] }; proposed?: { compile: { ok: boolean; output: string }; results: TestResult[] } }
+}
+
+export interface State {
+  connected: boolean
+  sandbox: SandboxStatus
+  languages: LanguageInfo[]
+  root: string
+  tree: TreeNode[]
+  open: OpenFile[]
+  active: string | null
+  stdin: Record<string, string>
+  run: RunState | null
+  diagnostics: Record<string, Diagnostic[]>
+  trace: TraceResult | null
+  tracing: boolean
+  step: number
+  playing: boolean
+  speed: number
+  focusLines: [number, number] | null
+  threads: Thread[]
+  proposal: Proposal | null
+  tests: TestRun | null
+  problems: ProblemMeta[]
+  leftTab: 'files' | 'practice' | 'history'
+  rightTab: 'visualize' | 'explain'
+  bottomTab: 'output' | 'terminal' | 'problems' | 'tests'
+  showNotes: boolean
+  focusMode: boolean
+  toast: string | null
+}
+
+let state: State = {
+  connected: false,
+  sandbox: { state: 'starting', message: 'Connecting…' },
+  languages: [], root: '', tree: [], open: [], active: null,
+  stdin: JSON.parse(localStorage.getItem('lab.stdin') ?? '{}'),
+  run: null, diagnostics: {}, trace: null, tracing: false, step: 0, playing: false, speed: 1, focusLines: null,
+  threads: [], proposal: null, tests: null, problems: [],
+  leftTab: 'files', rightTab: 'visualize', bottomTab: 'output', showNotes: false, focusMode: false, toast: null,
+}
+const subs = new Set<() => void>()
+
+export const getState = () => state
+export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
+  state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }
+  subs.forEach((f) => f())
+}
+const subscribe = (f: () => void) => { subs.add(f); return () => subs.delete(f) }
+export function useStore<T>(sel: (s: State) => T): T {
+  return useSyncExternalStore(subscribe, () => sel(state))
+}
+
+let toastTimer = 0
+export function toast(msg: string) {
+  setState({ toast: msg })
+  clearTimeout(toastTimer)
+  toastTimer = window.setTimeout(() => setState({ toast: null }), 4000)
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function guard<F extends (...a: any[]) => Promise<unknown>>(fn: F) {
+  return (...a: Parameters<F>) => fn(...a).catch((e: Error) => toast(e.message))
+}
+
+// ---------------- languages ----------------
+
+export function languageOf(path: string | null | undefined): LanguageInfo | undefined {
+  if (!path) return undefined
+  const ext = path.slice(path.lastIndexOf('.')).toLowerCase()
+  return state.languages.find((l) => l.exts.includes(ext))
+}
+
+// ---------------- files ----------------
+
+export const refreshTree = guard(async () => setState({ tree: await files.tree() }))
+
+export const openFile = guard(async (path: string) => {
+  if (!state.open.some((f) => f.path === path)) {
+    const content = await files.read(path)
+    setState((s) => ({ open: [...s.open, { path, content, saved: content }] }))
+  }
+  setState({ active: path, proposal: state.proposal?.file === path ? state.proposal : null })
+  rememberSession()
+})
+
+export function editActive(content: string) {
+  setState((s) => ({ open: s.open.map((f) => (f.path === s.active ? { ...f, content } : f)) }))
+}
+
+export const saveFile = guard(async (path = state.active ?? '', snapshot?: string) => {
+  const f = state.open.find((x) => x.path === path)
+  if (!f) return
+  await files.write(path, f.content, snapshot)
+  setState((s) => ({ open: s.open.map((x) => (x.path === path ? { ...x, saved: f.content } : x)) }))
+})
+
+export async function saveAllDirty() {
+  for (const f of state.open) if (f.content !== f.saved) await saveFile(f.path)
+}
+
+export async function closeFile(path: string) {
+  const f = state.open.find((x) => x.path === path)
+  if (f && f.content !== f.saved && !(await askConfirm(`${path} has unsaved changes. Close it and discard them?`, true))) return
+  setState((s) => {
+    const open = s.open.filter((x) => x.path !== path)
+    return { open, active: s.active === path ? open.at(-1)?.path ?? null : s.active }
+  })
+  rememberSession()
+}
+
+export const createFile = guard(async (path: string, content = '') => {
+  await files.write(path, content)
+  await refreshTree()
+  await openFile(path)
+})
+
+export const createFolder = guard(async (path: string) => { await files.mkdir(path); await refreshTree() })
+
+export const renamePath = guard(async (from: string, to: string) => {
+  await files.rename(from, to)
+  setState((s) => ({
+    open: s.open.map((f) => (f.path === from || f.path.startsWith(from + '/') ? { ...f, path: to + f.path.slice(from.length) } : f)),
+    active: s.active && (s.active === from || s.active.startsWith(from + '/')) ? to + s.active.slice(from.length) : s.active,
+  }))
+  await refreshTree()
+})
+
+export const deletePath = guard(async (path: string) => {
+  await files.remove(path)
+  setState((s) => {
+    const open = s.open.filter((f) => !(f.path === path || f.path.startsWith(path + '/')))
+    return { open, active: open.some((f) => f.path === s.active) ? s.active : open.at(-1)?.path ?? null }
+  })
+  await refreshTree()
+  toast(`Moved ${path} to the trash (.lab/trash) — recoverable.`)
+})
+
+export const uploadFiles = guard(async (list: FileList | File[], dir = '') => {
+  let last = ''
+  for (const file of Array.from(list)) {
+    const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name
+    last = dir ? `${dir}/${rel}` : rel
+    await files.upload(last, file)
+  }
+  await refreshTree()
+  if (last && languageOf(last)) await openFile(last)
+  toast(`Uploaded ${Array.from(list).length} file(s)`)
+})
+
+function rememberSession() {
+  localStorage.setItem('lab.session', JSON.stringify({ open: state.open.map((f) => f.path), active: state.active }))
+}
+
+export function setStdin(path: string, text: string) {
+  setState((s) => ({ stdin: { ...s.stdin, [path]: text } }))
+  localStorage.setItem('lab.stdin', JSON.stringify(state.stdin))
+}
+
+// ---------------- run ----------------
+
+let runSub: { id: string; unsubscribe: () => void } | null = null
+
+export const run = guard(async () => {
+  const file = state.active
+  if (!file) return toast('Open a file first')
+  if (!languageOf(file)) return toast(`Can't run ${file}: unsupported file type`)
+  if (state.run && state.run.status !== 'done') return toast('A program is already running — Stop it first')
+  await saveAllDirty()
+  runSub?.unsubscribe()
+  const stdin = state.stdin[file] ?? ''
+  const chunks: OutChunk[] = []
+  if (stdin) chunks.push({ kind: 'info', text: `▸ input from the Input box (${stdin.split('\n').filter(Boolean).length} line(s)); stdin closed after it\n` })
+  setState((s) => ({ run: { id: '', file, status: 'compiling', chunks }, bottomTab: 'output', diagnostics: { ...s.diagnostics, [file]: [] } }))
+  const push = (c: OutChunk) => setState((s) => (s.run ? { run: { ...s.run, chunks: [...s.run.chunks, c] } } : {}))
+  runSub = request({ t: 'run', file, stdin }, (m) => {
+    if (m.t === 'compile') {
+      if (m.output) push({ kind: 'compile', text: m.output })
+      setDiagnostics(file, m.diagnostics)
+      if (m.ok) setState((s) => (s.run ? { run: { ...s.run, status: 'running' } } : {}))
+      else push({ kind: 'error', text: '✖ Compilation failed — see the red markers in the editor, or the Problems tab.\n' })
+    } else if (m.t === 'out') push({ kind: m.stream, text: m.data })
+    else if (m.t === 'error') push({ kind: 'error', text: `✖ ${m.message}\n` })
+    else if (m.t === 'exit') {
+      if (m.diagnostics?.length) setDiagnostics(file, [...(state.diagnostics[file] ?? []), ...m.diagnostics])
+      setState((s) => (s.run ? { run: { ...s.run, status: 'done', exit: { code: m.code, description: m.description, ms: m.ms } } } : {}))
+      runSub?.unsubscribe()
+    }
+  })
+  setState((s) => (s.run ? { run: { ...s.run, id: runSub!.id } } : {}))
+})
+
+export function sendInput(text: string) {
+  const r = state.run
+  if (!r || r.status !== 'running') return
+  send({ t: 'stdin', id: r.id, data: text })
+  setState({ run: { ...r, chunks: [...r.chunks, { kind: 'stdin', text }] } })
+}
+export function sendEof() {
+  const r = state.run
+  if (r) send({ t: 'eof', id: r.id })
+}
+export function stop() {
+  const r = state.run
+  if (r && r.status !== 'done') send({ t: 'stop', id: r.id })
+}
+
+function setDiagnostics(file: string, list: Diagnostic[] = []) {
+  // Diagnostics name files relative to the workspace; keep the ones for files we know.
+  const byFile: Record<string, Diagnostic[]> = { [file]: [] }
+  for (const d of list) {
+    const key = d.file.endsWith(file) || file.endsWith(d.file) ? file : d.file
+    ;(byFile[key] ??= []).push(d)
+  }
+  setState((s) => ({ diagnostics: { ...s.diagnostics, ...byFile } }))
+}
+
+// ---------------- visualize ----------------
+
+export const visualize = guard(async (opts: { jumpTo?: [number, number]; stdin?: string } = {}) => {
+  const file = state.active
+  if (!file) return toast('Open a file first')
+  const lang = languageOf(file)
+  if (!lang) return toast(`Can't visualize ${file}: unsupported file type`)
+  await saveAllDirty()
+  const stdin = opts.stdin ?? state.stdin[file] ?? ''
+  setState({ tracing: true, rightTab: 'visualize', playing: false, focusLines: opts.jumpTo ?? null })
+  const sub = request({ t: 'trace', file, stdin }, (m) => {
+    if (m.t === 'error') { setState({ tracing: false }); toast(m.message); sub.unsubscribe(); return }
+    if (m.t !== 'trace-result') return
+    sub.unsubscribe()
+    const result = m as unknown as TraceResult
+    if (result.compile && !result.compile.ok) setDiagnostics(file, result.compile.diagnostics as Diagnostic[])
+    let step = 0
+    if (opts.jumpTo && result.trace) {
+      const [a, b] = opts.jumpTo
+      const i = result.trace.steps.findIndex((s) => s.line >= a && s.line <= b)
+      if (i >= 0) step = i
+    }
+    setState({ trace: result, tracing: false, step })
+    // Unsupported languages still get real execution results: run it.
+    if (!result.supported) run()
+  })
+})
+
+export function setStep(i: number) {
+  const n = state.trace?.trace?.steps.length ?? 0
+  setState({ step: Math.max(0, Math.min(n - 1, i)) })
+}
+
+/** Jump to the next/previous step that executes one of the focused lines. */
+export function jumpFocused(dir: 1 | -1) {
+  const steps = state.trace?.trace?.steps
+  if (!steps || !state.focusLines) return
+  const [a, b] = state.focusLines
+  for (let i = state.step + dir; i >= 0 && i < steps.length; i += dir) {
+    if (steps[i].line >= a && steps[i].line <= b) return setState({ step: i })
+  }
+  toast(dir > 0 ? 'Those lines do not run again after this step' : 'Those lines did not run before this step')
+}
+
+// ---------------- AI explanations ----------------
+
+export type AiAction = 'explain' | 'visual' | 'error' | 'example' | 'hint' | 'compare' | 'fix' | 'optimize' | 'ask' | 'next'
+
+const TITLES: Record<AiAction, string> = {
+  explain: 'Explain', visual: 'Show visually', error: 'Why this error', example: 'Small example', hint: 'Hint',
+  compare: 'Another approach', fix: 'Suggest a fix', optimize: 'Optimize', ask: 'Question', next: 'Next exercise',
+}
+
+export interface AskInput {
+  action: AiAction
+  selection?: string
+  lines?: [number, number]
+  hintLevel?: number
+  question?: string
+  problem?: string
+  extraDiagnostics?: string
+}
+
+export function currentProblemFor(file: string | null) {
+  if (!file) return undefined
+  return state.problems.find((p) => file.startsWith(p.folder + '/'))
+}
+
+export const askAi = guard(async (input: AskInput) => {
+  const file = state.active ?? undefined
+  const f = state.open.find((x) => x.path === file)
+  const lang = languageOf(file)
+  const diags = (file && state.diagnostics[file]) || []
+  const relevant = input.lines ? diags.filter((d) => d.line >= input.lines![0] - 1 && d.line <= input.lines![1] + 1) : diags
+  const traceOk = state.trace?.trace && state.trace.file === file
+  const lastRun = state.run
+  const runOut = lastRun && lastRun.file === file ? lastRun.chunks.filter((c) => c.kind !== 'info').map((c) => c.text).join('') : ''
+  let problem = input.problem
+  const prob = currentProblemFor(file ?? null)
+  if (!problem && prob) problem = await files.read(`${prob.folder}/problem.md`).catch(() => undefined)
+
+  const id = Math.random().toString(36).slice(2)
+  const snippet = (input.selection ?? input.question ?? '').trim().split('\n')[0].slice(0, 60)
+  const thread: Thread = {
+    id, title: `${TITLES[input.action]}${input.action === 'hint' ? ` (level ${input.hintLevel ?? 1})` : ''}${snippet ? `: ${snippet}` : ''}`,
+    action: input.action, file, lines: input.lines, answer: '', status: 'streaming', followUps: [],
+  }
+  setState((s) => ({ threads: [thread, ...s.threads], rightTab: 'explain' }))
+  const update = (patch: Partial<Thread>) => setState((s) => ({ threads: s.threads.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
+  const sub = request({
+    t: 'ai',
+    context: {
+      action: input.action, file, language: lang?.name, selection: input.selection, selectionLines: input.lines,
+      code: f?.content, stdin: file ? state.stdin[file] : undefined,
+      diagnostics: [relevant.map((d) => `line ${d.line}: ${d.severity}: ${d.message}`).join('\n'), input.extraDiagnostics].filter(Boolean).join('\n') || undefined,
+      runOutput: runOut || undefined,
+      stepState: traceOk ? describeStep(state.trace!.trace!, state.step, state.trace!.source) : undefined,
+      problem, hintLevel: input.hintLevel, question: input.question,
+    },
+  }, (m) => {
+    if (m.t === 'ai-delta') {
+      const t = state.threads.find((x) => x.id === id)
+      if (t) update({ answer: t.answer + m.text })
+    } else if (m.t === 'ai-done' || m.t === 'error') {
+      sub.unsubscribe()
+      update(m.error || m.message ? { status: 'error', error: m.error ?? m.message } : { status: 'done', sessionId: m.sessionId })
+      // You asked for changed code: show it as a diff against yours. Nothing is applied until you click Apply.
+      const code = lastCodeBlock(state.threads.find((x) => x.id === id)?.answer ?? '')
+      if (!m.error && code && ['fix', 'optimize', 'compare'].includes(input.action) && state.active === file) {
+        propose(code, thread.title)
+      }
+    }
+  })
+})
+
+export function followUp(threadId: string, question: string) {
+  const t = state.threads.find((x) => x.id === threadId)
+  if (!t?.sessionId) return toast('This answer can\'t be continued (no session).')
+  const traceOk = state.trace?.trace && state.trace.file === t.file
+  setState((s) => ({ threads: s.threads.map((x) => (x.id === threadId ? { ...x, status: 'streaming', followUps: [...x.followUps, { q: question, a: '' }] } : x)) }))
+  const patchLast = (fn: (a: string) => string, extra: Partial<Thread> = {}) => setState((s) => ({
+    threads: s.threads.map((x) => (x.id === threadId ? { ...x, ...extra, followUps: x.followUps.map((f, i) => (i === x.followUps.length - 1 ? { ...f, a: fn(f.a) } : f)) } : x)),
+  }))
+  const sub = request({
+    t: 'ai', resume: t.sessionId,
+    context: { action: 'ask', question, stepState: traceOk ? describeStep(state.trace!.trace!, state.step, state.trace!.source) : undefined },
+  }, (m) => {
+    if (m.t === 'ai-delta') patchLast((a) => a + m.text)
+    else if (m.t === 'ai-done' || m.t === 'error') {
+      sub.unsubscribe()
+      if (m.error || m.message) patchLast((a) => a + `\n\n⚠ ${m.error ?? m.message}`, { status: 'error' })
+      else patchLast((a) => a, { status: 'done', sessionId: m.sessionId ?? t.sessionId })
+    }
+  })
+}
+
+// ---------------- proposals: AI changes and old versions, always shown as a diff first ----------------
+
+export function lastCodeBlock(markdown: string): string | null {
+  const blocks = [...markdown.matchAll(/```[\w+#-]*\n([\s\S]*?)```/g)]
+  return blocks.length ? blocks.at(-1)![1] : null
+}
+
+export function propose(code: string, title: string, kind: Proposal['kind'] = 'ai', versionId?: string) {
+  const file = state.active
+  const f = state.open.find((x) => x.path === file)
+  if (!file || !f) return toast('Open the file you want to compare against first')
+  setState({ proposal: { file, title, original: f.content, proposed: code, kind, versionId }, focusMode: false })
+}
+
+export function updateProposed(code: string) {
+  setState((s) => (s.proposal ? { proposal: { ...s.proposal, proposed: code } } : {}))
+}
+
+export const applyProposal = guard(async () => {
+  const p = state.proposal
+  if (!p) return
+  // Keep the original recoverable: snapshot it before writing the new version.
+  await files.snapshot(p.file, p.kind === 'ai' ? 'before-ai-change' : 'before-restore')
+  await files.write(p.file, p.proposed)
+  setState((s) => ({ open: s.open.map((f) => (f.path === p.file ? { ...f, content: p.proposed, saved: p.proposed } : f)), proposal: null }))
+  toast('Applied. The previous version is saved in History.')
+})
+
+export const saveProposalAs = guard(async () => {
+  const p = state.proposal
+  if (!p) return
+  const dot = p.file.lastIndexOf('.')
+  const name = await askText('Save the proposed version as a new file:', `${p.file.slice(0, dot)}_v2${p.file.slice(dot)}`)
+  if (!name) return
+  await files.write(name, p.proposed)
+  setState({ proposal: null })
+  await refreshTree()
+  await openFile(name)
+})
+
+export function compareProposal() {
+  const p = state.proposal
+  if (!p) return
+  setState({ proposal: { ...p, compare: { running: true } }, bottomTab: 'tests' })
+  const sub = request({ t: 'compare', file: p.file, proposed: p.proposed }, (m) => {
+    if (m.t !== 'compare-result' && m.t !== 'error') return
+    sub.unsubscribe()
+    if (m.t === 'error') { toast(m.message); setState((s) => (s.proposal ? { proposal: { ...s.proposal, compare: undefined } } : {})); return }
+    setState((s) => (s.proposal ? { proposal: { ...s.proposal, compare: { running: false, noTests: m.noTests, original: m.original, proposed: m.proposed } } } : {}))
+  })
+}
+
+// ---------------- tests ----------------
+
+export const runTests = guard(async () => {
+  const file = state.active
+  if (!file) return toast('Open a file first')
+  await saveAllDirty()
+  setState({ tests: { file, running: true, results: [] }, bottomTab: 'tests' })
+  const sub = request({ t: 'test', file }, (m) => {
+    if (m.t !== 'test-result' && m.t !== 'error') return
+    sub.unsubscribe()
+    if (m.t === 'error') { toast(m.message); setState({ tests: null }); return }
+    if (m.compile && !m.compile.ok) setDiagnostics(file, m.compile.diagnostics)
+    setState({ tests: { file, running: false, noTests: m.noTests, compile: m.compile, results: m.results ?? [] } })
+  })
+})
+
+// ---------------- practice ----------------
+
+export const loadProblems = guard(async () => setState({ problems: await practice.list() }))
+
+// ---------------- boot ----------------
+
+onType('status', (m) => setState({ sandbox: m.sandbox }))
+
+export async function boot() {
+  const st = await fetch('/api/status', { headers: { 'X-Lab': '1' } }).then((r) => r.json())
+  setState({ languages: st.languages, root: st.root, sandbox: st.sandbox })
+  await refreshTree()
+  await loadProblems()
+  const saved = JSON.parse(localStorage.getItem('lab.session') ?? 'null') as { open: string[]; active: string | null } | null
+  const all = new Set<string>()
+  const walk = (n: TreeNode[]) => n.forEach((x) => (x.type === 'file' ? all.add(x.path) : walk(x.children ?? [])))
+  walk(state.tree)
+  const toOpen = saved?.open.filter((p) => all.has(p)) ?? []
+  if (!toOpen.length && all.has('start-here/vector_loop.cpp')) toOpen.push('start-here/vector_loop.cpp')
+  for (const p of toOpen) await openFile(p)
+  if (saved?.active && all.has(saved.active)) setState({ active: saved.active })
+}
