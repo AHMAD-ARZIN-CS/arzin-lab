@@ -9,7 +9,35 @@ export class FsError extends Error {
   constructor(message: string, readonly status = 400) { super(message) }
 }
 
-const HIDDEN = new Set(['.lab', '.git', 'node_modules', '__pycache__', '.DS_Store'])
+const HIDDEN = new Set(['.lab', '.chats', '.git', 'node_modules', '__pycache__', '.DS_Store'])
+
+// ---------- saved explanations: my-code/.chats/<context>.json ----------
+// One file per thing you asked about (a practice problem, a file, a board, a lecture).
+// Kept out of .lab so they're committed and backed up with your code.
+
+const CHATS = () => path.join(ROOT, '.chats')
+const chatFile = (key: string) => {
+  if (typeof key !== 'string' || !key) throw new FsError('missing chat key')
+  return path.join(CHATS(), key.replace(/[^\w.-]+/g, '_').slice(0, 150) + '.json')
+}
+
+export async function allChats(): Promise<unknown[]> {
+  if (!existsSync(CHATS())) return []
+  const out: unknown[] = []
+  for (const name of await fs.readdir(CHATS())) {
+    if (!name.endsWith('.json')) continue
+    try { out.push(...JSON.parse(await fs.readFile(path.join(CHATS(), name), 'utf8'))) } catch { /* skip a broken file */ }
+  }
+  return out
+}
+
+export async function saveChats(key: string, threads: unknown[]) {
+  if (!Array.isArray(threads)) throw new FsError('threads must be a list')
+  const file = chatFile(key)
+  await fs.mkdir(CHATS(), { recursive: true })
+  if (threads.length) await fs.writeFile(file, JSON.stringify(threads, null, 1))
+  else await fs.rm(file, { force: true })
+}
 
 export function resolveSafe(rel: string): string {
   if (typeof rel !== 'string') throw new FsError('path must be a string')

@@ -1,7 +1,7 @@
 // App state in one place, with the actions that change it. Components read with useStore(selector).
 import { useSyncExternalStore } from 'react'
 import { askConfirm, askText } from '../components/Dialogs'
-import { assetUrl, files, lectures, library, practice, type LanguageInfo, type ProblemMeta, type SandboxStatus, type TreeNode } from './api'
+import { api, assetUrl, files, lectures, library, practice, type LanguageInfo, type ProblemMeta, type SandboxStatus, type TreeNode } from './api'
 import { emptyBoard, fromExcalidraw, INK, newId, type Item } from './board'
 import { onType, request, send } from './socket'
 import { describeStep, type TraceResult } from './trace'
@@ -16,6 +16,9 @@ export interface Thread {
   id: string; title: string; action: string; file?: string; lines?: [number, number]
   /** Thumbnail of the whiteboard region that was sent (what the AI actually saw). */
   image?: string
+  /** What this conversation is about ("practice:two-sum", "file:x.cpp", "board:…", "lecture:…"). */
+  context: string
+  time: string
   answer: string; status: 'streaming' | 'done' | 'error'; error?: string; sessionId?: string; followUps: { q: string; a: string }[]
 }
 export interface Proposal {
@@ -352,15 +355,16 @@ export const askAi = guard(async (input: AskInput) => {
   const snippet = (input.selection ?? input.question ?? '').trim().split('\n')[0].slice(0, 60)
   const fromBoard = !!input.image
   const fromLecture = !!input.lectureSlug
+  const context = fromLecture ? contextFor({ lecture: input.lectureSlug }) : fromBoard ? contextFor({ board: state.activeBoard }) : contextFor({ file })
   const thread: Thread = {
     id, title: `${TITLES[input.action]}${input.action === 'hint' ? ` (level ${input.hintLevel ?? 1})` : ''}${snippet ? `: ${snippet}` : fromBoard ? ': circled on the board' : fromLecture ? `: ${input.lectureSlug!.replace(/-/g, ' ')}` : ''}`,
     // Lecture answers save to notes/lectures/<name>.md
     action: input.action, file: fromBoard ? undefined : fromLecture ? `lectures/${input.lectureSlug}` : file, lines: input.lines, image: input.image,
-    answer: '', status: 'streaming', followUps: [],
+    answer: '', status: 'streaming', followUps: [], context, time: new Date().toISOString(),
   }
   setState((s) => ({ threads: [thread, ...s.threads], rightTab: 'explain', rightOpen: true }))
   const update = (patch: Partial<Thread>) => setState((s) => ({ threads: s.threads.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
-  const context = fromLecture
+  const aiContext = fromLecture
     ? { action: input.action, question: input.question, lectureSlug: input.lectureSlug }
     : fromBoard
     ? {
@@ -376,13 +380,14 @@ export const askAi = guard(async (input: AskInput) => {
         stepState: traceOk ? describeStep(state.trace!.trace!, state.step, state.trace!.source) : undefined,
         problem, hintLevel: input.hintLevel, question: input.question,
       }
-  const sub = request({ t: 'ai', context }, (m) => {
+  const sub = request({ t: 'ai', context: aiContext }, (m) => {
     if (m.t === 'ai-delta') {
       const t = state.threads.find((x) => x.id === id)
       if (t) update({ answer: t.answer + m.text })
     } else if (m.t === 'ai-done' || m.t === 'error') {
       sub.unsubscribe()
       update(m.error || m.message ? { status: 'error', error: m.error ?? m.message } : { status: 'done', sessionId: m.sessionId })
+      if (!m.error && !m.message) persistChats(context)
       // You asked for changed code: show it as a diff against yours. Nothing is applied until you click Apply.
       const code = lastCodeBlock(state.threads.find((x) => x.id === id)?.answer ?? '')
       if (!m.error && code && !fromBoard && ['fix', 'optimize', 'compare'].includes(input.action) && state.active === file) {
@@ -391,6 +396,60 @@ export const askAi = guard(async (input: AskInput) => {
     }
   })
 })
+
+// ---------------- saved explanations ----------------
+// Every finished explanation is saved under the thing it was about, so coming back to a
+// problem shows its earlier explanations. Stored in my-code/.chats/ (one file per context).
+
+export function contextFor(o: { file?: string | null; board?: string | null; lecture?: string }): string {
+  if (o.lecture) return `lecture:${o.lecture}`
+  if (o.board) {
+    const m = o.board.match(/^boards\/lecture-(.+)\.board\.json$/) // a lecture opened as a board
+    return m ? `lecture:${m[1]}` : `board:${o.board}`
+  }
+  if (o.file) {
+    const m = o.file.match(/^practice\/([^/]+)\//)
+    return m ? `practice:${m[1]}` : `file:${o.file}`
+  }
+  return 'general'
+}
+
+/** The context you're looking at right now. */
+export function currentContext(s: State = state): string {
+  return s.mode === 'board' ? contextFor({ board: s.activeBoard }) : contextFor({ file: s.active })
+}
+
+export function contextLabel(key: string): string {
+  const [kind, ...rest] = key.split(':')
+  const v = rest.join(':')
+  if (kind === 'practice') return state.problems.find((p) => p.slug === v)?.title ?? v
+  if (kind === 'board') return `board ${boardName(v)}`
+  if (kind === 'lecture') return `lecture ${v.replace(/-/g, ' ')}`
+  if (kind === 'file') return v.split('/').pop() ?? v
+  return 'general'
+}
+
+const saveTimers = new Map<string, number>()
+function persistChats(key: string) {
+  clearTimeout(saveTimers.get(key))
+  saveTimers.set(key, window.setTimeout(() => {
+    const threads = state.threads.filter((t) => t.context === key && t.status !== 'streaming' && t.answer)
+    api('/api/chats', { method: 'PUT', json: { key, threads } }).catch((e: Error) => toast(`Explanation not saved: ${e.message}`))
+  }, 300))
+}
+
+export function deleteThread(id: string) {
+  const t = state.threads.find((x) => x.id === id)
+  setState((s) => ({ threads: s.threads.filter((x) => x.id !== id) }))
+  if (t) persistChats(t.context)
+}
+
+async function loadChats() {
+  const saved = (await api<Thread[]>('/api/chats')).filter((t) => t && t.id && t.context)
+    .map((t) => ({ ...t, status: t.status === 'streaming' ? 'done' : t.status }) as Thread)
+  saved.sort((a, b) => (b.time ?? '').localeCompare(a.time ?? ''))
+  setState({ threads: saved })
+}
 
 export function followUp(threadId: string, question: string) {
   const t = state.threads.find((x) => x.id === threadId)
@@ -409,6 +468,7 @@ export function followUp(threadId: string, question: string) {
       sub.unsubscribe()
       if (m.error || m.message) patchLast((a) => a + `\n\n⚠ ${m.error ?? m.message}`, { status: 'error' })
       else patchLast((a) => a, { status: 'done', sessionId: m.sessionId ?? t.sessionId })
+      persistChats(t.context)
     }
   })
 }
@@ -584,6 +644,7 @@ export async function boot() {
   setState({ languages: st.languages, root: st.root, sandbox: st.sandbox })
   await refreshTree()
   await loadProblems()
+  await loadChats().catch(() => {})
   await importOldBoards()
   if (state.activeBoard && !boardList(state.tree).includes(state.activeBoard)) setState({ activeBoard: null, mode: 'code' })
   const saved = JSON.parse(localStorage.getItem('lab.session') ?? 'null') as { open: string[]; active: string | null } | null
