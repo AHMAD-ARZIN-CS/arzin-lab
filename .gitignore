@@ -1,0 +1,27 @@
+# dependencies & builds
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
+
+# generated output (re-create by running the scripts)
+modules/**/out/
+
+# Godot
+.godot/
+*.translation
+
+# secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+.vscode/
