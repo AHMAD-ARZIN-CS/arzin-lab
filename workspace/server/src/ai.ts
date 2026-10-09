@@ -102,9 +102,14 @@ export function ask(prompt: string, opts: { resume?: string }, on: {
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     '--safe-mode', '--tools', '', '--model', AI.model, '--system-prompt', SYSTEM]
   if (opts.resume) args.push('--resume', opts.resume)
+  // If this server was started from inside another Claude Code session (e.g. the desktop app),
+  // it inherits that session's internal variables. They make the CLI try to use the host
+  // app's login instead of its own. Strip them so the CLI uses your normal `claude` login.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) =>
+    !/^(CLAUDE_CODE_|CLAUDECODE$|CLAUDE_AGENT_SDK_|CLAUDE_PID$|CLAUDE_PREVIEW_|ANTHROPIC_BASE_URL$)/.test(k)))
   let child
   try {
-    child = spawn(claudeExecutable(), args, { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+    child = spawn(claudeExecutable(), args, { cwd, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
   } catch (e) {
     on.done({ error: `Could not start the Claude CLI: ${(e as Error).message}` })
     return { cancel() {} }
@@ -127,7 +132,7 @@ export function ask(prompt: string, opts: { resume?: string }, on: {
       } else if (ev.type === 'result') {
         if (ev.is_error) {
           const msg = String(ev.result ?? 'unknown error')
-          finish({ error: /authenticat|401|expired/i.test(msg) ? `${msg}\n\nFix: open a terminal, run \`claude\`, and log in again.` : msg })
+          finish({ error: /authenticat|401|expired/i.test(msg) ? `${msg}\n\nFix: in a terminal run \`claude auth login\`, finish the sign-in in your browser, then ask again (no restart needed).` : msg })
         } else {
           if (!streamed && ev.result) on.delta(String(ev.result))
           finish({ sessionId: ev.session_id })
