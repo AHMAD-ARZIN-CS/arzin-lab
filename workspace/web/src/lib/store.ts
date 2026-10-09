@@ -2,6 +2,7 @@
 import { useSyncExternalStore } from 'react'
 import { askConfirm, askText } from '../components/Dialogs'
 import { files, practice, type LanguageInfo, type ProblemMeta, type SandboxStatus, type TreeNode } from './api'
+import { emptyBoard, fromExcalidraw } from './board'
 import { onType, request, send } from './socket'
 import { describeStep, type TraceResult } from './trace'
 
@@ -13,6 +14,8 @@ export interface TestResult { name: string; input: string; expected: string; act
 export interface TestRun { file: string; running: boolean; noTests?: boolean; compile?: { ok: boolean; output: string }; results: TestResult[] }
 export interface Thread {
   id: string; title: string; action: string; file?: string; lines?: [number, number]
+  /** Thumbnail of the whiteboard region that was sent (what the AI actually saw). */
+  image?: string
   answer: string; status: 'streaming' | 'done' | 'error'; error?: string; sessionId?: string; followUps: { q: string; a: string }[]
 }
 export interface Proposal {
@@ -42,13 +45,21 @@ export interface State {
   proposal: Proposal | null
   tests: TestRun | null
   problems: ProblemMeta[]
-  leftTab: 'files' | 'practice' | 'history'
-  rightTab: 'visualize' | 'explain'
+  /** Center of the screen: the code editor, or a whiteboard. */
+  mode: 'code' | 'board'
+  activeBoard: string | null
+  sideView: 'files' | 'practice' | 'history' | 'boards'
+  sideOpen: boolean
+  rightOpen: boolean
+  bottomOpen: boolean
+  rightTab: 'visualize' | 'explain' | 'notes'
   bottomTab: 'output' | 'terminal' | 'problems' | 'tests'
-  showNotes: boolean
   focusMode: boolean
+  paletteOpen: boolean
   toast: string | null
 }
+
+const ui = JSON.parse(localStorage.getItem('lab.ui') ?? '{}') as Partial<State>
 
 let state: State = {
   connected: false,
@@ -57,7 +68,9 @@ let state: State = {
   stdin: JSON.parse(localStorage.getItem('lab.stdin') ?? '{}'),
   run: null, diagnostics: {}, trace: null, tracing: false, step: 0, playing: false, speed: 1, focusLines: null,
   threads: [], proposal: null, tests: null, problems: [],
-  leftTab: 'files', rightTab: 'visualize', bottomTab: 'output', showNotes: false, focusMode: false, toast: null,
+  mode: ui.mode ?? 'code', activeBoard: ui.activeBoard ?? null, sideView: ui.sideView ?? 'files',
+  sideOpen: ui.sideOpen ?? true, rightOpen: ui.rightOpen ?? true, bottomOpen: ui.bottomOpen ?? true,
+  rightTab: 'visualize', bottomTab: 'output', focusMode: false, paletteOpen: false, toast: null,
 }
 const subs = new Set<() => void>()
 
@@ -65,6 +78,19 @@ export const getState = () => state
 export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }
   subs.forEach((f) => f())
+}
+// Remember the layout between visits.
+subs.add(() => {
+  const { mode, activeBoard, sideView, sideOpen, rightOpen, bottomOpen } = state
+  localStorage.setItem('lab.ui', JSON.stringify({ mode, activeBoard, sideView, sideOpen, rightOpen, bottomOpen }))
+})
+
+/** Open a side view; clicking the active one again collapses the side panel (like VS Code). */
+export function showSide(view: State['sideView']) {
+  setState((s) => (s.sideView === view && s.sideOpen ? { sideOpen: false } : { sideView: view, sideOpen: true }))
+}
+export function showRight(tab: State['rightTab']) {
+  setState({ rightTab: tab, rightOpen: true })
 }
 const subscribe = (f: () => void) => { subs.add(f); return () => subs.delete(f) }
 export function useStore<T>(sel: (s: State) => T): T {
@@ -99,7 +125,7 @@ export const openFile = guard(async (path: string) => {
     const content = await files.read(path)
     setState((s) => ({ open: [...s.open, { path, content, saved: content }] }))
   }
-  setState({ active: path, proposal: state.proposal?.file === path ? state.proposal : null })
+  setState({ active: path, mode: 'code', proposal: state.proposal?.file === path ? state.proposal : null })
   rememberSession()
 })
 
@@ -190,7 +216,7 @@ export const run = guard(async () => {
   const stdin = state.stdin[file] ?? ''
   const chunks: OutChunk[] = []
   if (stdin) chunks.push({ kind: 'info', text: `▸ input from the Input box (${stdin.split('\n').filter(Boolean).length} line(s)); stdin closed after it\n` })
-  setState((s) => ({ run: { id: '', file, status: 'compiling', chunks }, bottomTab: 'output', diagnostics: { ...s.diagnostics, [file]: [] } }))
+  setState((s) => ({ run: { id: '', file, status: 'compiling', chunks }, bottomTab: 'output', bottomOpen: true, mode: 'code', diagnostics: { ...s.diagnostics, [file]: [] } }))
   const push = (c: OutChunk) => setState((s) => (s.run ? { run: { ...s.run, chunks: [...s.run.chunks, c] } } : {}))
   runSub = request({ t: 'run', file, stdin }, (m) => {
     if (m.t === 'compile') {
@@ -243,7 +269,7 @@ export const visualize = guard(async (opts: { jumpTo?: [number, number]; stdin?:
   if (!lang) return toast(`Can't visualize ${file}: unsupported file type`)
   await saveAllDirty()
   const stdin = opts.stdin ?? state.stdin[file] ?? ''
-  setState({ tracing: true, rightTab: 'visualize', playing: false, focusLines: opts.jumpTo ?? null })
+  setState({ tracing: true, rightTab: 'visualize', rightOpen: true, mode: 'code', playing: false, focusLines: opts.jumpTo ?? null })
   const sub = request({ t: 'trace', file, stdin }, (m) => {
     if (m.t === 'error') { setState({ tracing: false }); toast(m.message); sub.unsubscribe(); return }
     if (m.t !== 'trace-result') return
@@ -280,11 +306,12 @@ export function jumpFocused(dir: 1 | -1) {
 
 // ---------------- AI explanations ----------------
 
-export type AiAction = 'explain' | 'visual' | 'error' | 'example' | 'hint' | 'compare' | 'fix' | 'optimize' | 'ask' | 'next'
+export type AiAction = 'explain' | 'visual' | 'error' | 'example' | 'hint' | 'compare' | 'fix' | 'optimize' | 'ask' | 'next' | 'solve' | 'check'
 
 const TITLES: Record<AiAction, string> = {
-  explain: 'Explain', visual: 'Show visually', error: 'Why this error', example: 'Small example', hint: 'Hint',
+  explain: 'Explain', visual: 'Visualize', error: 'Why this error', example: 'Small example', hint: 'Hint',
   compare: 'Another approach', fix: 'Suggest a fix', optimize: 'Optimize', ask: 'Question', next: 'Next exercise',
+  solve: 'Solve', check: 'Find the mistake',
 }
 
 export interface AskInput {
@@ -295,6 +322,8 @@ export interface AskInput {
   question?: string
   problem?: string
   extraDiagnostics?: string
+  /** A circled whiteboard region (PNG data URL). When set, the code context is left out. */
+  image?: string
 }
 
 export function currentProblemFor(file: string | null) {
@@ -317,23 +346,29 @@ export const askAi = guard(async (input: AskInput) => {
 
   const id = Math.random().toString(36).slice(2)
   const snippet = (input.selection ?? input.question ?? '').trim().split('\n')[0].slice(0, 60)
+  const fromBoard = !!input.image
   const thread: Thread = {
-    id, title: `${TITLES[input.action]}${input.action === 'hint' ? ` (level ${input.hintLevel ?? 1})` : ''}${snippet ? `: ${snippet}` : ''}`,
-    action: input.action, file, lines: input.lines, answer: '', status: 'streaming', followUps: [],
+    id, title: `${TITLES[input.action]}${input.action === 'hint' ? ` (level ${input.hintLevel ?? 1})` : ''}${snippet ? `: ${snippet}` : fromBoard ? ': circled on the board' : ''}`,
+    action: input.action, file: fromBoard ? undefined : file, lines: input.lines, image: input.image,
+    answer: '', status: 'streaming', followUps: [],
   }
-  setState((s) => ({ threads: [thread, ...s.threads], rightTab: 'explain' }))
+  setState((s) => ({ threads: [thread, ...s.threads], rightTab: 'explain', rightOpen: true }))
   const update = (patch: Partial<Thread>) => setState((s) => ({ threads: s.threads.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
-  const sub = request({
-    t: 'ai',
-    context: {
-      action: input.action, file, language: lang?.name, selection: input.selection, selectionLines: input.lines,
-      code: f?.content, stdin: file ? state.stdin[file] : undefined,
-      diagnostics: [relevant.map((d) => `line ${d.line}: ${d.severity}: ${d.message}`).join('\n'), input.extraDiagnostics].filter(Boolean).join('\n') || undefined,
-      runOutput: runOut || undefined,
-      stepState: traceOk ? describeStep(state.trace!.trace!, state.step, state.trace!.source) : undefined,
-      problem, hintLevel: input.hintLevel, question: input.question,
-    },
-  }, (m) => {
+  const context = fromBoard
+    ? {
+        // A whiteboard question is about the picture, not whatever file happens to be open.
+        action: input.action, question: input.question,
+        images: [{ mediaType: 'image/png', data: input.image!.slice(input.image!.indexOf(',') + 1) }],
+      }
+    : {
+        action: input.action, file, language: lang?.name, selection: input.selection, selectionLines: input.lines,
+        code: f?.content, stdin: file ? state.stdin[file] : undefined,
+        diagnostics: [relevant.map((d) => `line ${d.line}: ${d.severity}: ${d.message}`).join('\n'), input.extraDiagnostics].filter(Boolean).join('\n') || undefined,
+        runOutput: runOut || undefined,
+        stepState: traceOk ? describeStep(state.trace!.trace!, state.step, state.trace!.source) : undefined,
+        problem, hintLevel: input.hintLevel, question: input.question,
+      }
+  const sub = request({ t: 'ai', context }, (m) => {
     if (m.t === 'ai-delta') {
       const t = state.threads.find((x) => x.id === id)
       if (t) update({ answer: t.answer + m.text })
@@ -342,7 +377,7 @@ export const askAi = guard(async (input: AskInput) => {
       update(m.error || m.message ? { status: 'error', error: m.error ?? m.message } : { status: 'done', sessionId: m.sessionId })
       // You asked for changed code: show it as a diff against yours. Nothing is applied until you click Apply.
       const code = lastCodeBlock(state.threads.find((x) => x.id === id)?.answer ?? '')
-      if (!m.error && code && ['fix', 'optimize', 'compare'].includes(input.action) && state.active === file) {
+      if (!m.error && code && !fromBoard && ['fix', 'optimize', 'compare'].includes(input.action) && state.active === file) {
         propose(code, thread.title)
       }
     }
@@ -413,7 +448,7 @@ export const saveProposalAs = guard(async () => {
 export function compareProposal() {
   const p = state.proposal
   if (!p) return
-  setState({ proposal: { ...p, compare: { running: true } }, bottomTab: 'tests' })
+  setState({ proposal: { ...p, compare: { running: true } }, bottomTab: 'tests', bottomOpen: true })
   const sub = request({ t: 'compare', file: p.file, proposed: p.proposed }, (m) => {
     if (m.t !== 'compare-result' && m.t !== 'error') return
     sub.unsubscribe()
@@ -428,7 +463,7 @@ export const runTests = guard(async () => {
   const file = state.active
   if (!file) return toast('Open a file first')
   await saveAllDirty()
-  setState({ tests: { file, running: true, results: [] }, bottomTab: 'tests' })
+  setState({ tests: { file, running: true, results: [] }, bottomTab: 'tests', bottomOpen: true, mode: 'code' })
   const sub = request({ t: 'test', file }, (m) => {
     if (m.t !== 'test-result' && m.t !== 'error') return
     sub.unsubscribe()
@@ -442,6 +477,46 @@ export const runTests = guard(async () => {
 
 export const loadProblems = guard(async () => setState({ problems: await practice.list() }))
 
+// ---------------- whiteboards ----------------
+
+export function allFiles(nodes: TreeNode[] = state.tree): string[] {
+  return nodes.flatMap((n) => (n.type === 'file' ? [n.path] : allFiles(n.children ?? [])))
+}
+export const boardList = (tree: TreeNode[]) => allFiles(tree).filter((p) => p.endsWith('.board.json'))
+export const boardName = (path: string) => path.split('/').pop()!.replace(/\.board\.json$/, '')
+
+export function openBoard(path: string) {
+  setState({ activeBoard: path, mode: 'board' })
+}
+
+export const newBoard = guard(async (name?: string) => {
+  const base = (name ?? `board-${new Date().toISOString().slice(0, 10)}`).trim().replace(/[\\/:*?"<>|]+/g, '-') || 'board'
+  const taken = new Set(boardList(state.tree))
+  let path = `boards/${base}.board.json`
+  for (let i = 2; taken.has(path); i++) path = `boards/${base}-${i}.board.json`
+  await files.write(path, JSON.stringify(emptyBoard()))
+  await refreshTree()
+  openBoard(path)
+})
+
+/** One-time: turn whiteboards from the old Excalidraw panel (notes/**.excalidraw) into boards.
+ *  The original files are left exactly as they are. */
+async function importOldBoards() {
+  const existing = new Set(boardList(state.tree))
+  let made = 0
+  for (const p of allFiles().filter((x) => x.startsWith('notes/') && x.endsWith('.excalidraw'))) {
+    const name = p.slice('notes/'.length).replace(/\.excalidraw$/, '').replace(/\//g, '-')
+    const target = `boards/${name}.board.json`
+    if (existing.has(target)) continue
+    try {
+      const doc = fromExcalidraw(await files.read(p))
+      await files.write(target, JSON.stringify(doc))
+      made++
+    } catch { /* not a valid drawing: skip */ }
+  }
+  if (made) { await refreshTree(); toast(`Imported ${made} whiteboard(s) from your old notes into Boards`) }
+}
+
 // ---------------- boot ----------------
 
 onType('status', (m) => setState({ sandbox: m.sandbox }))
@@ -451,12 +526,16 @@ export async function boot() {
   setState({ languages: st.languages, root: st.root, sandbox: st.sandbox })
   await refreshTree()
   await loadProblems()
+  await importOldBoards()
+  if (state.activeBoard && !boardList(state.tree).includes(state.activeBoard)) setState({ activeBoard: null, mode: 'code' })
   const saved = JSON.parse(localStorage.getItem('lab.session') ?? 'null') as { open: string[]; active: string | null } | null
   const all = new Set<string>()
   const walk = (n: TreeNode[]) => n.forEach((x) => (x.type === 'file' ? all.add(x.path) : walk(x.children ?? [])))
   walk(state.tree)
   const toOpen = saved?.open.filter((p) => all.has(p)) ?? []
   if (!toOpen.length && all.has('start-here/vector_loop.cpp')) toOpen.push('start-here/vector_loop.cpp')
+  const mode = state.mode // reopening files switches to Code; keep whatever mode you were in
   for (const p of toOpen) await openFile(p)
   if (saved?.active && all.has(saved.active)) setState({ active: saved.active })
+  setState({ mode })
 }

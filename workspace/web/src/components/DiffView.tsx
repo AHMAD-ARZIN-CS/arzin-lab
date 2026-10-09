@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { monaco, monacoLanguage } from '../lib/monaco'
+import { editorThemeName, monaco, monacoLanguage } from '../lib/monaco'
 import { applyProposal, compareProposal, saveProposalAs, setState, updateProposed, useStore } from '../lib/store'
 
 /** A proposed change (from the AI, or an old version) shown side by side before anything changes. */
@@ -10,7 +10,7 @@ export function DiffView() {
 
   useEffect(() => {
     const ed = monaco.editor.createDiffEditor(host.current!, {
-      theme: 'lab', automaticLayout: true, fontSize: 13, renderSideBySide: true, originalEditable: false,
+      theme: editorThemeName(), automaticLayout: true, fontSize: 13, renderSideBySide: true, originalEditable: false,
       minimap: { enabled: false }, scrollBeyondLastLine: false,
     })
     editor.current = ed

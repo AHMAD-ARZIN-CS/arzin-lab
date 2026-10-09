@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { monaco, modelFor } from '../lib/monaco'
+import { editorThemeName, modelFor, monaco } from '../lib/monaco'
 import { askAi, editActive, getState, run, saveFile, setState, useStore, visualize, type AiAction } from '../lib/store'
 
 /** The editor actions that use your selection. Also in the right-click menu. */
@@ -13,6 +13,8 @@ export const SELECTION_ACTIONS: { action: AiAction | 'show-visual'; label: strin
 ]
 
 let editorInstance: monaco.editor.IStandaloneCodeEditor | null = null
+const cursorListeners = new Set<(line: number, col: number) => void>()
+export function onCursor(f: (line: number, col: number) => void) { cursorListeners.add(f); return () => cursorListeners.delete(f) }
 
 /** The selected text, or the word/line under the cursor when nothing is selected. */
 export function currentSelection(): { text: string; lines: [number, number] } | null {
@@ -37,7 +39,7 @@ export function runSelectionAction(action: AiAction | 'show-visual') {
     if (fresh) {
       const steps = s.trace!.trace!.steps
       const i = steps.findIndex((st) => st.line >= sel.lines[0] && st.line <= sel.lines[1])
-      setState({ focusLines: sel.lines, rightTab: 'visualize', ...(i >= 0 ? { step: i } : {}) })
+      setState({ focusLines: sel.lines, rightTab: 'visualize', rightOpen: true, ...(i >= 0 ? { step: i } : {}) })
     } else {
       visualize({ jumpTo: sel.lines })
     }
@@ -53,6 +55,8 @@ export function revealLine(line: number) {
   editorInstance?.focus()
 }
 
+export const focusEditor = () => editorInstance?.focus()
+
 export function CodeEditor() {
   const host = useRef<HTMLDivElement>(null)
   const active = useStore((s) => s.active)
@@ -64,10 +68,12 @@ export function CodeEditor() {
 
   useEffect(() => {
     const ed = monaco.editor.create(host.current!, {
-      theme: 'lab', automaticLayout: true, fontSize: 14, minimap: { enabled: false },
-      fontFamily: "'Cascadia Code', 'SF Mono', Consolas, monospace", fontLigatures: false, // show << as two characters, like the compiler sees it
+      theme: editorThemeName(), automaticLayout: true, fontSize: 14, minimap: { enabled: false },
+      fontFamily: "'Cascadia Code', 'JetBrains Mono', 'SF Mono', Consolas, monospace",
+      fontLigatures: false, // show << as two characters, like the compiler sees it
       scrollBeyondLastLine: false, tabSize: 4, glyphMargin: true, renderWhitespace: 'selection',
-      padding: { top: 8 },
+      padding: { top: 10 }, smoothScrolling: true, cursorSmoothCaretAnimation: 'on', roundedSelection: true,
+      scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
     })
     editorInstance = ed
     decorations.current = ed.createDecorationsCollection()
@@ -75,6 +81,7 @@ export function CodeEditor() {
       const v = ed.getValue()
       if (getState().open.find((f) => f.path === getState().active)?.content !== v) editActive(v)
     })
+    ed.onDidChangeCursorPosition((e) => cursorListeners.forEach((f) => f(e.position.lineNumber, e.position.column)))
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveFile())
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => run())
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => visualize())
@@ -105,8 +112,7 @@ export function CodeEditor() {
     const model = editorInstance?.getModel()
     if (!model) return
     monaco.editor.setModelMarkers(model, 'lab', (diagnostics ?? []).filter((d) => d.line <= model.getLineCount()).map((d) => ({
-      startLineNumber: d.line, startColumn: d.col ?? 1, endLineNumber: d.line,
-      endColumn: d.col ? model.getLineMaxColumn(d.line) : model.getLineMaxColumn(d.line),
+      startLineNumber: d.line, startColumn: d.col ?? 1, endLineNumber: d.line, endColumn: model.getLineMaxColumn(d.line),
       message: `${d.phase === 'runtime' ? 'Runtime: ' : ''}${d.message}`,
       severity: d.severity === 'error' ? monaco.MarkerSeverity.Error : d.severity === 'warning' ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Info,
     })))

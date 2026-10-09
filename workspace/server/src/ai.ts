@@ -26,7 +26,9 @@ Rules:
 - Do not write the full solution to a practice problem unless the request explicitly asks for a full solution.
 - End with a line "**Go deeper:**" followed by 2-3 short follow-up topics as a bullet list (omit for hints).`
 
-export type AiAction = 'explain' | 'visual' | 'error' | 'example' | 'hint' | 'compare' | 'fix' | 'optimize' | 'ask' | 'next'
+export type AiAction = 'explain' | 'visual' | 'error' | 'example' | 'hint' | 'compare' | 'fix' | 'optimize' | 'ask' | 'next' | 'solve' | 'check'
+
+export interface AiImage { mediaType: string; data: string }
 
 export interface AiContext {
   action: AiAction
@@ -42,15 +44,26 @@ export interface AiContext {
   problem?: string
   hintLevel?: number
   question?: string
+  /** Region circled on the whiteboard (PNG), for board actions. */
+  images?: AiImage[]
 }
 
+const BOARD_INTRO = `The learner circled this region of their whiteboard: handwriting, a sketch, or a pasted screenshot of a problem.
+Start with a short "**What I see:**" block transcribing it (math in plain text or LaTeX-ish notation, code in a code block), so they can confirm you read the handwriting correctly. If part is illegible, say which part.`
+
+const VISUAL_SVG = `When a picture helps, include ONE diagram as a fenced \`\`\`svg block: a single self-contained <svg> with a viewBox (at most 640x400), no scripts, no external images, no fonts beyond sans-serif/monospace. Use stroke="currentColor"/fill="currentColor" for lines and text so it reads in light and dark mode; accent colors allowed: #3b82f6 #22c55e #f59e0b #ef4444 #a855f7. Label axes and key points.`
+
 const TASKS: Record<AiAction, (c: AiContext) => string> = {
-  explain: () => `Explain the SELECTED code. Structure:
+  explain: (c) => c.images?.length
+    ? `EXPLAIN what is circled: what concept or problem it is, what each step or part means and WHY it's done, in plain English first and then precisely. If it's the learner's own work, explain their reasoning back to them and gently flag anything that looks off (without fully re-solving). ${VISUAL_SVG}`
+    : `Explain the SELECTED code. Structure:
 1. **In plain English** (2-4 sentences): what it is and why this program uses it here.
 2. **The syntax, piece by piece.**
 3. **How it behaves when this program runs** (use real values from the execution state if given).
 Keep it under ~300 words.`,
-  visual: () => `Explain what the SELECTED code does at runtime, step by step, as a trace: show how the relevant variables/memory change, using a small table or ASCII diagram. Use the execution state if given. The learner can also see the real recorded trace in the visualizer — point out what to watch there.`,
+  visual: (c) => c.images?.length
+    ? `VISUALIZE this. Make the idea visible: graph functions, draw the geometry, show how quantities change, or diagram the data structure/algorithm. ${VISUAL_SVG} Then explain in a few bullets what the picture shows. If it's code, also give a small runnable program in one fenced block they can open and step through in the workspace visualizer.`
+    : `Explain what the SELECTED code does at runtime, step by step, as a trace: show how the relevant variables/memory change, using a small table or ASCII diagram. Use the execution state if given. The learner can also see the real recorded trace in the visualizer — point out what to watch there.`,
   error: () => `Explain why this ERROR happened. Structure:
 1. **What the message means** in plain English.
 2. **The root cause in this code** (point to the exact line/expression).
@@ -71,11 +84,13 @@ Base it on the problem and their current attempt: say what is already right in t
   fix: () => `Propose a FIX for the problem in this code. First explain the bug in 2-4 sentences. Then output the COMPLETE corrected file in ONE fenced code block (it will be shown as a diff against the original; the learner decides whether to apply it). Change as little as possible.`,
   optimize: () => `Propose an OPTIMIZED version of this program. Explain: what changes, why it helps, and the tradeoffs (readability; time and space complexity as THEORETICAL estimates for both versions, clearly labeled as estimates). Output the COMPLETE optimized file in ONE fenced code block. Do not claim measured speedups — the workspace will measure both versions on the same tests.`,
   ask: (c) => `The learner asks: ${c.question ?? ''}`,
+  solve: () => `Solve the problem step by step. Number the steps, say WHY each step is taken (which rule or idea), and box the final answer in bold. If it's a programming problem, give the solution code in one fenced block and its complexity. ${VISUAL_SVG}`,
+  check: () => `Examine the learner's work like a careful tutor. Go through it step by step: for each step say ✅ correct or ❌ wrong. At the FIRST mistake, explain exactly what went wrong (sign error, wrong rule, algebra slip, off-by-one, logic bug...) and show the corrected step. Then say how the rest changes and give the correct final result. If everything is right, say so and point out anything that could be cleaner. Don't just re-solve from scratch: anchor on THEIR steps.`,
   next: () => `Based on the problem and the learner's attempt/results, identify 1-2 concepts they seem to be missing or should strengthen, and suggest ONE next exercise (title, short statement, 2 example tests as input/expected output) that targets it. Don't solve it.`,
 }
 
 export function buildPrompt(c: AiContext): string {
-  const parts: string[] = [TASKS[c.action](c), '']
+  const parts: string[] = c.images?.length ? [BOARD_INTRO, '', TASKS[c.action](c), ''] : [TASKS[c.action](c), '']
   if (c.problem) parts.push('## Problem statement', c.problem, '')
   if (c.file) parts.push(`## File: ${c.file} (${c.language ?? 'unknown language'})`)
   if (c.selection) {
@@ -93,13 +108,16 @@ export function buildPrompt(c: AiContext): string {
 export interface AiHandle { cancel(): void }
 
 /** Stream an answer. `resume` continues a previous conversation ("go deeper"). */
-export function ask(prompt: string, opts: { resume?: string }, on: {
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+
+export function ask(prompt: string, opts: { resume?: string; images?: AiImage[] }, on: {
   delta: (text: string) => void
   done: (r: { sessionId?: string; error?: string }) => void
 }): AiHandle {
   const cwd = path.join(os.tmpdir(), 'arzin-lab-ai')
   mkdirSync(cwd, { recursive: true })
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
+  // Messages go in as stream-json so they can carry images (the circled whiteboard region).
+  const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     '--safe-mode', '--tools', '', '--model', AI.model, '--system-prompt', SYSTEM]
   if (opts.resume) args.push('--resume', opts.resume)
   // If this server was started from inside another Claude Code session (e.g. the desktop app),
@@ -144,6 +162,11 @@ export function ask(prompt: string, opts: { resume?: string }, on: {
   child.stderr.on('data', (s: string) => { stderr += s })
   child.on('error', (e) => finish({ error: `Could not start the Claude CLI (${e.message}). Is Claude Code installed?` }))
   child.on('close', (code) => finish(code === 0 ? {} : { error: stderr.trim() || `Claude CLI exited with code ${code}` }))
-  child.stdin.end(prompt)
+  const images = (opts.images ?? []).filter((im) => IMAGE_TYPES.has(im.mediaType) && im.data.length < 7_000_000).slice(0, 4)
+  const content = [
+    ...images.map((im) => ({ type: 'image', source: { type: 'base64', media_type: im.mediaType, data: im.data } })),
+    { type: 'text', text: prompt },
+  ]
+  child.stdin.end(JSON.stringify({ type: 'user', message: { role: 'user', content } }) + '\n')
   return { cancel: () => { child.kill(); finish({ error: 'Cancelled' }) } }
 }

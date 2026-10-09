@@ -1,14 +1,11 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { files } from '../lib/api'
-import { getState, refreshTree, setState, toast, useStore, type Thread } from '../lib/store'
+import { getState, openBoard, refreshTree, setState, toast, useStore, newBoard, boardList, type Thread } from '../lib/store'
 import { revealLine } from './CodeEditor'
 import { Markdown } from './Markdown'
 
-const Whiteboard = lazy(() => import('./Whiteboard'))
-
 /** Notes for a code file live at notes/<file>.md — plain files, so they're in your repo too. */
 export const notesPath = (file: string) => `notes/${file}.md`
-export const boardPath = (file: string) => `notes/${file}.excalidraw`
 
 export async function appendNote(t: Thread) {
   const file = t.file ?? getState().active
@@ -19,14 +16,14 @@ export async function appendNote(t: Thread) {
   const body = [t.answer, ...t.followUps.map((f) => `**Q: ${f.q}**\n\n${f.a}`)].join('\n\n')
   await files.write(path, `${existing.trimEnd()}\n\n## ${t.title}${link}\n_${new Date().toLocaleString()}_\n\n${body}\n`)
   window.dispatchEvent(new CustomEvent('lab:notes-changed', { detail: path }))
-  setState({ showNotes: true })
+  setState({ rightTab: 'notes', rightOpen: true })
   refreshTree()
   toast(`Saved to ${path}`)
 }
 
 export function NotesPanel() {
   const active = useStore((s) => s.active)
-  const [tab, setTab] = useState<'notes' | 'board'>('notes')
+  const tree = useStore((s) => s.tree)
   const [text, setText] = useState('')
   const [editing, setEditing] = useState(true)
   const [loadedFor, setLoadedFor] = useState<string | null>(null)
@@ -55,31 +52,30 @@ export function NotesPanel() {
     if (m) { e.preventDefault(); revealLine(Number(m[1])) }
   }
 
+  const boardFor = active ? `boards/${active.replace(/\//g, '-')}.board.json` : null
+  const openFileBoard = () => {
+    if (!boardFor || !active) return
+    if (boardList(tree).includes(boardFor)) openBoard(boardFor)
+    else newBoard(active.replace(/\//g, '-'))
+  }
+
+  if (!active) return <div className="pane-empty">Open a file: notes are saved per file.</div>
   return (
     <div className="notes">
-      <div className="panel-head">
-        <div className="subtabs inline">
-          <button className={`subtab ${tab === 'notes' ? 'active' : ''}`} onClick={() => setTab('notes')}>Notes</button>
-          <button className={`subtab ${tab === 'board' ? 'active' : ''}`} onClick={() => setTab('board')}>Whiteboard</button>
-        </div>
-        <div className="head-actions">
-          {tab === 'notes' && <button className="btn small" onClick={() => setEditing(!editing)}>{editing ? 'Preview' : 'Edit'}</button>}
-          <button className="icon-btn" title="Close notes" onClick={() => setState({ showNotes: false })}>×</button>
+      <div className="pane-toolbar">
+        <span className="muted small">Notes for <b>{active.split('/').pop()}</b></span>
+        <div className="row-gap">
+          <button className="btn small ghost" onClick={openFileBoard} title="A whiteboard tied to this file">Board for this file</button>
+          <button className="btn small" onClick={() => setEditing(!editing)}>{editing ? 'Preview' : 'Edit'}</button>
         </div>
       </div>
-      {!active && <div className="muted pad">Open a file: notes and drawings are saved per file.</div>}
-      {active && tab === 'notes' && loadedFor === active && (
+      {loadedFor === active && (
         editing
           ? <textarea className="notes-text" value={text} onChange={(e) => onChange(e.target.value)} spellCheck
-              placeholder={`Notes for ${active}\n\nPlan your approach, trace an example by hand, write down what confused you.\nSaved explanations land here too. Markdown works.`} />
+              placeholder={`Plan your approach, trace an example, write down what confused you.\nSaved explanations land here too. Markdown works.`} />
           : <div className="notes-preview" onClick={onClick}><Markdown text={text || '_Nothing yet._'} /></div>
       )}
-      {active && tab === 'board' && (
-        <Suspense fallback={<div className="muted pad">Loading whiteboard…</div>}>
-          <Whiteboard key={active} path={boardPath(active)} />
-        </Suspense>
-      )}
-      {active && <div className="notes-foot muted">Saved to <code>{tab === 'notes' ? notesPath(active) : boardPath(active)}</code></div>}
+      <div className="pane-foot">Saved to <code>{notesPath(active)}</code></div>
     </div>
   )
 }

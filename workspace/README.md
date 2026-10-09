@@ -72,13 +72,30 @@ To add a language, install it in `sandbox/Dockerfile` and add an entry in `serve
 - Tracing steps through code in **one file** (the open one). Multi-file C++ projects run fine but only that file's lines are traced.
 - Programs that read input interactively are traced using the **Input box** contents, because the trace runs non-interactively.
 
+## Getting around
+
+- **Code | Board** switch at the top (Ctrl+1 / Ctrl+2). Code mode is the editor, output and terminal. Board mode is a whiteboard.
+- **Icon rail** on the left: Files, Practice, Boards, History. Clicking the active icon again hides the side panel.
+- **Right panel**: Visualize · Explain · Notes.
+- **Ctrl+K**: jump to any file, board or problem, or type `>` for commands.
+- **Panels**: Ctrl+B (side), Ctrl+J (output/terminal), Ctrl+Alt+B (right). Ctrl+Shift+F is focus mode; Esc exits.
+- **Light / dark** with the sun/moon button. The editor, terminal and boards all follow it. The default follows your OS setting.
+
+## Whiteboard (GoodNotes-style)
+
+Boards are notebooks saved as `my-code/boards/<name>.board.json`.
+
+- **Tools**: pen with pressure (a stylus works; with a pen, your palm or finger pans instead of drawing), highlighter (drawn under the ink), eraser, lasso, text, and pan (or hold Space). Ctrl+scroll or pinch zooms. Paper can be dots, grid, lines or plain. Undo and redo work.
+- **Paste or drop a screenshot** of a textbook or LeetCode problem onto the board.
+- **Circle anything with the lasso** (L), then use **Ask AI → Solve · Explain · Visualize · Find the mistake · Ask…**. Exactly what's inside the lasso is sent as an image, and the answer appears in Explain with a thumbnail of what the AI saw. The AI first writes down what it read, so you can catch handwriting it misread. *Visualize* answers can include diagrams (SVG, sanitized). The lasso also moves or deletes what it caught.
+- Whiteboards from the old Excalidraw panel were imported automatically, and the original files were left untouched.
+
 ## Learning features
 
 - **Practice** tab: problems are folders in `my-code/practice/<name>/` containing `problem.md`, `tests.json` and your code. Run the tests to see expected vs actual output, time and memory per case. **Visualize with this input** debugs one failing case. Hints get stronger one level at a time (nudge, approach, walkthrough, full solution), and the full solution needs a confirmation. **+ My own problem** takes a pasted statement, starter code and test cases. **What should I practice next?** suggests a targeted exercise.
 - **Improve ▾**: *Suggest a fix*, *Optimize & compare*, or *Another approach*. The AI's code always opens as a **diff against yours**, and the right side is editable. **Test both** runs both versions on the same tests (3 runs each, median), flags any output differences, and keeps measured numbers separate from the explanation's theoretical complexity.
 - **History** tab: the original version from before your first save, autosaves every 10 minutes, and a snapshot before any AI change is applied. Click a version to diff it and restore it if you want. Deleted files go to `my-code/.lab/trash`.
-- **Notes**: per-file Markdown notes and an Excalidraw whiteboard, saved as `my-code/notes/<file>.md` and `.excalidraw`. "Save to notes" stores an explanation with a link back to the line it's about.
-- **Focus** (Ctrl+Shift+F): collapses everything except the editor.
+- **Notes**: per-file Markdown notes (`my-code/notes/<file>.md`). "Save to notes" stores an explanation with a link back to the line it's about. "Board for this file" opens a whiteboard tied to that file.
 
 ## Security model
 
@@ -98,7 +115,8 @@ This server can run code, so it is built so that only you can reach it:
 | [xterm.js](https://github.com/xtermjs/xterm.js) | terminal | MIT |
 | [dockerode](https://github.com/apocas/dockerode) | Docker API (exec, TTY, resize) | Apache-2.0 |
 | [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) | layout | MIT |
-| [Excalidraw](https://github.com/excalidraw/excalidraw) | whiteboard | MIT |
+| [perfect-freehand](https://github.com/steveruizok/perfect-freehand) | smooth pressure-sensitive pen strokes | MIT |
+| [lucide](https://github.com/lucide-icons/lucide) | icons | ISC |
 | [marked](https://github.com/markedjs/marked) + [DOMPurify](https://github.com/cure53/DOMPurify) | safe Markdown | MIT / Apache-2.0 or MPL-2.0 |
 | GDB, GCC, Python, Node, OpenJDK | inside the sandbox image only | GPL / PSF / MIT / GPL+CE |
 
@@ -107,6 +125,7 @@ This server can run code, so it is built so that only you can reach it:
 - **Piston**: the public API has needed an approved key since February 2026, and keys exclude individual projects. Self-hosting gives a stdin stream, not a terminal.
 - **Python Tutor**: its repository appears to have been taken down, and its C++ backend is a Valgrind fork pinned to old Linux. Its ideas (one step per line, stack and heap with arrows, a step cap) shaped the visualizer.
 - **CodeDive** (Park et al., 2025): an activity-monitoring IDE for instructors. The idea adapted here is a personal timeline: version history and a record of what changed between broken and working code.
-- **tldraw**: requires a license key for production use, so Excalidraw was chosen.
+- **tldraw**: requires a license key for production use.
+- **Excalidraw** (used at first): great for diagrams, but not for handwriting notes. It was replaced with a small notebook engine on perfect-freehand (the same stroke library Excalidraw uses), which allowed lasso-to-AI, palm rejection and paper styles.
 
 None of these provide step tracing, so the tracers are this project's own code.

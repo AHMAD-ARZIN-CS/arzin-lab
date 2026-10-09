@@ -4,6 +4,7 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { newId, request, send } from '../lib/socket'
 import { refreshTree, useStore } from '../lib/store'
+import { onThemeChange, resolvedTheme, terminalTheme } from '../lib/theme'
 
 /** A real bash shell inside the sandbox, starting in your code folder (/work). */
 export function Terminal({ visible }: { visible: boolean }) {
@@ -16,8 +17,9 @@ export function Terminal({ visible }: { visible: boolean }) {
     if (sandbox !== 'ready') return
     const term = new XTerm({
       fontFamily: "'Cascadia Code', Consolas, monospace", fontSize: 13, cursorBlink: true,
-      theme: { background: '#0b0d18', foreground: '#dfe5ff', cursor: '#6ec8ff' }, scrollback: 5000,
+      theme: terminalTheme(resolvedTheme()), scrollback: 5000,
     })
+    const offTheme = onThemeChange(() => { term.options.theme = terminalTheme(resolvedTheme()) })
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host.current!)
@@ -39,7 +41,7 @@ export function Terminal({ visible }: { visible: boolean }) {
       try { fit.fit(); send({ t: 'term-resize', id, cols: term.cols, rows: term.rows }) } catch { /* not laid out */ }
     })
     ro.observe(host.current!)
-    return () => { ro.disconnect(); input.dispose(); send({ t: 'term-close', id }); sub.unsubscribe(); term.dispose() }
+    return () => { offTheme(); ro.disconnect(); input.dispose(); send({ t: 'term-close', id }); sub.unsubscribe(); term.dispose() }
   }, [sandbox, session])
 
   return (

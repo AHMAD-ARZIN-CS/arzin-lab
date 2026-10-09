@@ -5,6 +5,7 @@ import JsonWorker from 'monaco-editor/language/json/json.worker?worker'
 import CssWorker from 'monaco-editor/language/css/css.worker?worker'
 import HtmlWorker from 'monaco-editor/language/html/html.worker?worker'
 import TsWorker from 'monaco-editor/language/typescript/ts.worker?worker'
+import { onThemeChange, resolvedTheme } from './theme'
 
 self.MonacoEnvironment = {
   getWorker(_id: string, label: string) {
@@ -16,16 +17,35 @@ self.MonacoEnvironment = {
   },
 }
 
-monaco.editor.defineTheme('lab', {
+monaco.editor.defineTheme('lab-dark', {
   base: 'vs-dark',
   inherit: true,
   rules: [],
   colors: {
-    'editor.background': '#0e1120',
-    'editor.lineHighlightBackground': '#161a2c',
-    'editorGutter.background': '#0e1120',
+    'editor.background': '#12151c',
+    'editor.lineHighlightBackground': '#191d27',
+    'editorGutter.background': '#12151c',
+    'editorLineNumber.foreground': '#4a5163',
+    'editorLineNumber.activeForeground': '#a7b0c4',
   },
 })
+monaco.editor.defineTheme('lab-light', {
+  base: 'vs',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editor.background': '#ffffff',
+    'editor.lineHighlightBackground': '#f4f6fa',
+    'editorGutter.background': '#ffffff',
+    'editorLineNumber.foreground': '#b3b9c6',
+    'editorLineNumber.activeForeground': '#4b5366',
+  },
+})
+// The editor theme is global in Monaco: follow the app theme.
+const syncTheme = () => monaco.editor.setTheme(resolvedTheme() === 'dark' ? 'lab-dark' : 'lab-light')
+syncTheme()
+onThemeChange(syncTheme)
+export const editorThemeName = () => (resolvedTheme() === 'dark' ? 'lab-dark' : 'lab-light')
 
 const EXT_LANG: Record<string, string> = {
   '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp', '.c++': 'cpp', '.h': 'cpp', '.hpp': 'cpp', '.c': 'c',

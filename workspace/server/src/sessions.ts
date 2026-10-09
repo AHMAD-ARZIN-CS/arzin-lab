@@ -85,7 +85,7 @@ export function handleSocket(ws: WebSocket) {
     ai(m) {
       const ctx = m.context as AiContext
       const prompt = m.resume ? String(ctx.question ?? 'Go deeper.') + (ctx.stepState ? `\n\nCurrent execution state:\n${ctx.stepState}` : '') : buildPrompt(ctx)
-      ais.set(m.id, ask(prompt, { resume: m.resume as string | undefined }, {
+      ais.set(m.id, ask(prompt, { resume: m.resume as string | undefined, images: m.resume ? undefined : ctx.images }, {
         delta: (text) => send({ t: 'ai-delta', id: m.id, text }),
         done: (r) => { ais.delete(m.id); send({ t: 'ai-done', id: m.id, ...r }) },
       }))

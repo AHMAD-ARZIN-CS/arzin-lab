@@ -60,6 +60,7 @@ function ThreadView({ t }: { t: Thread }) {
       </div>
       {!collapsed && (
         <div className="thread-body">
+          {t.image && <img className="thread-img" src={t.image} alt="The circled region that was sent" title="What the AI received" />}
           {t.answer ? <Markdown text={t.answer} codeActions={codeActions} streaming={busy && !t.followUps.length} /> : busy && <div className="muted"><span className="spinner" /> Thinking…</div>}
           {t.followUps.map((f, i) => (
             <div key={i} className="follow">
