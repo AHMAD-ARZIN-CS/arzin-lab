@@ -29,11 +29,14 @@ const colorOf = (c: string, pal: Palette) => (c === INK ? pal.ink : c)
 
 // ---------- strokes → smooth outlines (perfect-freehand) ----------
 
-const pathCache = new WeakMap<StrokeItem, Path2D>()
+// Cache outlines, keyed by stroke AND its point count: a stroke being drawn keeps growing,
+// so a cached outline from fewer points must be recomputed (otherwise you only see the first dot).
+const pathCache = new WeakMap<StrokeItem, { n: number; path: Path2D }>()
 
 function strokePath(s: StrokeItem): Path2D {
-  let p = pathCache.get(s)
-  if (p) return p
+  const hit = pathCache.get(s)
+  if (hit && hit.n === s.points.length) return hit.path
+  let p: Path2D
   const hasPressure = s.points.some((pt) => pt[2] !== 0.5)
   const outline = getStroke(s.points, {
     size: s.size * (s.kind === 'highlighter' ? 1 : 2.2),
@@ -53,7 +56,7 @@ function strokePath(s: StrokeItem): Path2D {
     }
     p.closePath()
   }
-  pathCache.set(s, p)
+  pathCache.set(s, { n: s.points.length, path: p })
   return p
 }
 
