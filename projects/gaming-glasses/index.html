@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gaming Glasses Prototype</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <aside id="panel" class="card">
+      <header>
+        <h1>Gaming Glasses</h1>
+        <div class="spec"><span id="spec">52□18-140</span><span class="spec-hint">A □ DBL − temple (ISO 8624)</span></div>
+      </header>
+
+      <section>
+        <h2>Theme</h2>
+        <select id="theme"></select>
+        <p id="themeBlurb" class="muted"></p>
+        <p id="themeNote" class="note"></p>
+      </section>
+
+      <section>
+        <h2>Frame size</h2>
+        <div class="presets">
+          <button data-preset="S">S</button><button data-preset="M">M</button><button data-preset="L">L</button>
+        </div>
+        <div id="frameSliders"></div>
+      </section>
+
+      <section>
+        <h2>Your face</h2>
+        <div id="faceSliders"></div>
+      </section>
+
+      <section>
+        <h2>View</h2>
+        <label class="toggle"><input type="checkbox" id="showHead" /> Head fit guide</label>
+        <label class="toggle"><input type="checkbox" id="xray" /> X-ray electronics</label>
+        <label class="toggle"><input type="checkbox" id="spin" checked /> Turntable</label>
+        <div class="views">
+          <button data-view="hero">3/4</button><button data-view="front">Front</button><button data-view="side">Side</button><button data-view="top">Top</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Export</h2>
+        <div class="row">
+          <button id="stlFront">Front STL</button><button id="stlTemples">Temples STL</button><button id="png">PNG</button>
+        </div>
+        <p class="muted small">STL units are millimetres. Print the front and temples separately (SLS nylon recommended).</p>
+      </section>
+    </aside>
+
+    <aside id="report" class="card">
+      <h2>Fit &amp; comfort check</h2>
+      <div id="weight" class="weight"></div>
+      <ul id="checks"></ul>
+      <p class="muted small">Weights are estimates from the model's real volume. Electronics masses are typical values for modules of that size.</p>
+    </aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -39,4 +39,4 @@ Each mini-project lives in `projects/<name>/` with its own README: the goal, how
 
 | Project | What it is |
 |---|---|
-| _(none yet)_ | |
+| [gaming-glasses](projects/gaming-glasses/) | 3D prototype of wearable AR gaming glasses with game themes (Candy Crush first): real eyewear sizing, weight/balance checks, STL export. three.js |
