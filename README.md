@@ -27,7 +27,16 @@ Needs **Docker Desktop**, which runs your code in an isolated container, and **C
 arzin-lab/
 ├── workspace/   The coding workspace: server, web UI, sandbox image, tracers
 ├── my-code/     YOUR code, practice problems and notes (created on first start)
+├── projects/    Mini-projects, one folder each
 ├── modules/     Earlier: a 3D renderer written from scratch in Python
 ├── hub/         Earlier: 3D dashboard experiment (three.js)
 └── scenes/      Earlier: 3D scene files for the hub
 ```
+
+## Mini-projects
+
+Each mini-project lives in `projects/<name>/` with its own README: the goal, how to run it, and what I learned.
+
+| Project | What it is |
+|---|---|
+| _(none yet)_ | |
