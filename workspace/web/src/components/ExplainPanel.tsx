@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { askText } from './Dialogs'
 import { appendNote } from './NotesPanel'
 import { Markdown, placeOnBoard, type CodeAction } from './Markdown'
+import type { PlotSpec } from '../lib/plot'
 import { revealLine } from './CodeEditor'
 import { askAi, contextLabel, createFile, currentContext, deleteThread, followUp, markPlaced, getState, openFile, propose, toast, useStore, type Thread } from '../lib/store'
 
@@ -66,10 +67,16 @@ function ThreadView({ t, showContext }: { t: Thread; showContext: boolean }) {
   const [more, setMore] = useState('')
   const busy = t.status === 'streaming'
   // "Visualize" on the board: the first diagram goes onto the board next to what you circled (once).
-  const autoPlace = useCallback((svg: SVGSVGElement) => {
+  const autoPlace = useCallback((svg: SVGSVGElement, plot?: PlotSpec) => {
     if (t.action !== 'visual' || !t.image || t.placed || t.status !== 'done') return
-    placeOnBoard(svg).then((ok) => { if (ok) { markPlaced(t.id); toast('Diagram added to your board, next to what you circled') } })
+    placeOnBoard(svg, plot).then((ok) => { if (ok) { markPlaced(t.id); toast('Diagram added to your board: drag it or its corners to move and resize') } })
   }, [t.action, t.image, t.placed, t.status, t.id])
+  // "Animate / make interactive" on a graph → the AI adds sliders for what matters.
+  const askAnimate = useCallback((spec: PlotSpec) => followUp(t.id,
+    `Make this graph interactive so I can SEE how it changes. Return a new \`\`\`plot with "sliders" for the parameters that matter `
+    + `(replace constants in the formulas with named parameters like a, b, h, k and give each a min/max/value), and "trace": true. `
+    + `Then tell me what to try: which slider to move or animate, and what to watch for. Current graph: ${JSON.stringify(spec)}`,
+    { wantDiagram: true }), [t.id])
   const when = t.time ? new Date(t.time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''
   return (
     <div className={`thread ${t.status}`}>
@@ -88,11 +95,11 @@ function ThreadView({ t, showContext }: { t: Thread; showContext: boolean }) {
       {!collapsed && (
         <div className="thread-body">
           {t.image && <img className="thread-img" src={t.image} alt="The circled region that was sent" title="What the AI received" />}
-          {t.answer ? <Markdown text={t.answer} codeActions={codeActions} streaming={busy && !t.followUps.length} onDiagram={autoPlace} /> : busy && <div className="muted"><span className="spinner" /> Thinking…</div>}
+          {t.answer ? <Markdown text={t.answer} codeActions={codeActions} streaming={busy && !t.followUps.length} onDiagram={autoPlace} onAskAnimate={askAnimate} /> : busy && <div className="muted"><span className="spinner" /> Thinking…</div>}
           {t.followUps.map((f, i) => (
             <div key={i} className="follow">
               <div className="follow-q">› {f.q}</div>
-              {f.a ? <Markdown text={f.a} codeActions={codeActions} streaming={busy && i === t.followUps.length - 1} /> : <div className="muted"><span className="spinner" /> Thinking…</div>}
+              {f.a ? <Markdown text={f.a} codeActions={codeActions} streaming={busy && i === t.followUps.length - 1} onAskAnimate={askAnimate} /> : <div className="muted"><span className="spinner" /> Thinking…</div>}
             </div>
           ))}
           {t.status === 'error' && <div className="error">⚠ {t.error}</div>}

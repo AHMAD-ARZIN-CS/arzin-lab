@@ -62,8 +62,12 @@ export const DIAGRAM_GUIDE = `DIAGRAMS: the learner's app draws these fenced blo
 1. Graphs of functions → a \`\`\`plot block with JSON (no comments):
    {"title":"...","x":[xmin,xmax],"y":[ymin,ymax] (optional),"functions":[{"fn":"x^2 - 2*x","label":"f(x)"}],
     "points":[{"x":1,"y":-1,"label":"vertex (1,-1)"}],"vlines":[{"x":2,"label":"x = 2"}],
-    "areas":[{"fn":"x^2","from":0,"to":1,"label":"area"}],"xlabel":"x","ylabel":"y"}
-   Formulas use x only, mathjs syntax: + - * / ^, sqrt, sin, cos, tan, exp, log (natural), abs, pi, e. Pick a window that shows the interesting part; mark roots, extrema, intersections as points.
+    "areas":[{"fn":"x^2","from":0,"to":1,"label":"area"}],"xlabel":"x","ylabel":"y",
+    "sliders":[{"name":"a","min":-3,"max":3,"value":1,"label":"a (stretch)"}], "trace":true}
+   The graph is INTERACTIVE for the learner (pan, zoom, a trace point with tangent and values, animated sliders).
+   Formulas use x plus any slider names (e.g. "a*(x-h)^2+k"), mathjs syntax: + - * / ^, sqrt, sin, cos, tan, exp, log (natural), abs, pi, e.
+   Add sliders when a parameter's effect is the point (transformations, families of curves, limits). Set "trace": true when following the curve matters (rates, slope, where it increases).
+   Pick a window that shows the interesting part; mark roots, extrema, intersections as points.
 2. Processes, algorithms, code flow, recursion trees, data structures, state machines → a \`\`\`mermaid block
    (flowchart TD / LR, graph, stateDiagram-v2, sequenceDiagram, classDiagram). Keep labels short; quote every label: A["x = x + 1"].
    Math in mermaid labels and plot labels can't be typeset, so write it with Unicode the way a textbook shows it:

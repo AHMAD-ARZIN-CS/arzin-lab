@@ -4,7 +4,11 @@ import { getStroke } from 'perfect-freehand'
 
 export type Pt = [number, number, number] // x, y, pressure
 export interface StrokeItem { id: string; kind: 'pen' | 'highlighter'; color: string; size: number; points: Pt[] }
-export interface ImageItem { id: string; kind: 'image'; src: string; x: number; y: number; w: number; h: number }
+export interface ImageItem {
+  id: string; kind: 'image'; src: string; x: number; y: number; w: number; h: number
+  /** For graphs: the formulas behind the picture, so it can be reopened as a live graph. */
+  plot?: import('./plot').PlotSpec
+}
 export interface TextItem { id: string; kind: 'text'; x: number; y: number; text: string; color: string; size: number }
 export type Item = StrokeItem | ImageItem | TextItem
 export type Paper = 'dots' | 'grid' | 'lines' | 'plain'
@@ -194,6 +198,49 @@ export function translateItem(it: Item, dx: number, dy: number): Item {
   if (it.kind === 'image') return { ...it, x: it.x + dx, y: it.y + dy }
   if (it.kind === 'text') return { ...it, x: it.x + dx, y: it.y + dy }
   return { ...it, points: it.points.map(([x, y, p]) => [x + dx, y + dy, p] as Pt) }
+}
+
+/** Resize: scale an item around an anchor point (the corner opposite the one being dragged). */
+export function scaleItem(it: Item, ax: number, ay: number, s: number): Item {
+  if (it.kind === 'image') return { ...it, x: ax + (it.x - ax) * s, y: ay + (it.y - ay) * s, w: it.w * s, h: it.h * s }
+  if (it.kind === 'text') return { ...it, x: ax + (it.x - ax) * s, y: ay + (it.y - ay) * s, size: Math.max(6, it.size * s) }
+  return { ...it, size: Math.max(0.5, it.size * s), points: it.points.map(([x, y, p]) => roundPt(ax + (x - ax) * s, ay + (y - ay) * s, p)) }
+}
+
+/** The item under a point (topmost first): pictures and text by their box, strokes by distance. */
+export function itemAt(items: Item[], x: number, y: number, r: number): Item | null {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i]
+    if (it.kind === 'image' || it.kind === 'text') {
+      const b = bounds(it)
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return it
+    } else if (it.points.some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < (r + it.size) ** 2)) return it
+  }
+  return null
+}
+
+const overlaps = (a: Box, b: Box, gap: number) =>
+  a.x < b.x + b.w + gap && a.x + a.w + gap > b.x && a.y < b.y + b.h + gap && a.y + a.h + gap > b.y
+
+/** Where to put a new w×h picture near `near` without covering your writing:
+ *  try right, below, left, above, then keep stepping right until there's room. */
+export function freeSpot(items: Item[], near: Box, w: number, h: number): { x: number; y: number } {
+  const taken = items.map(bounds)
+  const fits = (x: number, y: number) => !taken.some((b) => overlaps({ x, y, w, h }, b, 16))
+  const gap = 40
+  const tries = [
+    { x: near.x + near.w + gap, y: near.y },
+    { x: near.x, y: near.y + near.h + gap },
+    { x: near.x - w - gap, y: near.y },
+    { x: near.x, y: near.y - h - gap },
+  ]
+  for (const t of tries) if (fits(t.x, t.y)) return t
+  for (let k = 1; k < 40; k++) {
+    const x = near.x + near.w + gap + k * (w / 2)
+    if (fits(x, near.y)) return { x, y: near.y }
+    if (fits(near.x, near.y + near.h + gap + k * (h / 2))) return { x: near.x, y: near.y + near.h + gap + k * (h / 2) }
+  }
+  return tries[0]
 }
 
 // ---------- "circle a problem": capture exactly what's inside the lasso as a PNG ----------

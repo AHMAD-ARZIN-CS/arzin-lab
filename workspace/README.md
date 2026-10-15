@@ -93,7 +93,10 @@ Boards are notebooks saved as `my-code/boards/<name>.board.json`.
 ## Diagrams, everywhere
 
 - **In answers:** the AI draws real graphics instead of code. ` ```plot ` blocks become function graphs, drawn by our own plotter with formulas parsed safely by mathjs, showing roots, extrema, shaded areas and labels. ` ```mermaid ` blocks become flowcharts, trees, state machines and call diagrams. Every diagram has **Put on board**.
-- **Board → Visualize:** the first diagram is placed on the board next to what you circled, and the view moves to show it.
+- **Graphs are live, like Desmos:** drag to pan, scroll to zoom, hover to read values. **Trace** puts a dot on the curve with its x, y and slope ("increasing / decreasing"), **Play** walks it along the curve, and **Tangent** draws the tangent line. Graphs with parameters get sliders (a, b, h, k…) that you can drag or animate.
+- **Animate / make interactive:** on any graph, asks the AI to turn constants into sliders and tell you what to try.
+- **Board → Visualize:** the first diagram is placed on the board next to what you circled, in a free spot that doesn't cover your writing, and the view moves to show it. It is selected right away. Drag it to move it, and drag a corner to resize it.
+- **Open live graph:** tap a graph on the board with the lasso, then choose *Open live graph* to explore it again. *Put on board* updates the picture with your current view and slider values.
 - **Explain with a diagram:** a button on every answer asks for a diagram-based explanation.
 - **Code visualizer views:**
   - **Memory**: the stack, heap, pointers and arrays, with an **arrays as bars** option for sorting and sums.

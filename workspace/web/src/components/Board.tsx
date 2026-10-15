@@ -1,13 +1,17 @@
 // The whiteboard: write by hand, paste problems, circle anything and ask the AI about it.
 import {
-  Eraser, Hand, Highlighter, ImagePlus, Lasso, Lightbulb, Microscope, PenLine, Redo2, ScanSearch,
+  Eraser, Hand, Highlighter, ImagePlus, Lasso, Lightbulb, LineChart, Microscope, PenLine, Redo2, ScanSearch,
   Sparkles, Trash2, Type, Undo2, Wand2, X,
 } from 'lucide-react'
+import { svgToPng } from '../lib/diagrams'
+import type { PlotSpec } from '../lib/plot'
+import { InteractivePlot } from './InteractivePlot'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   bounds, captureRegion, drawItems, drawPaper, emptyBoard, HIGHLIGHT_COLORS, hitStrokes, INK, lassoSelect, newId,
   PALETTES, PEN_COLORS, parseBoard, resolveSrc, roundPt, setBoardFile, SIZES, translateItem, unionBox,
-  type BoardDoc, type Item, type Paper, type StrokeItem, type View,
+  freeSpot, itemAt, scaleItem,
+  type BoardDoc, type ImageItem, type Item, type Paper, type StrokeItem, type View,
 } from '../lib/board'
 import { api, files } from '../lib/api'
 import { askAi, boardName, deletedBoards, toast, useStore, type AiAction } from '../lib/store'
@@ -33,7 +37,7 @@ const AI_ACTIONS: { action: AiAction; icon: typeof PenLine; label: string }[] = 
 ]
 
 /** Set while a board is open: lets AI answers place diagrams on it ("Put on board"). */
-export const boardBridge: { addImage: ((blob: Blob) => Promise<void> | void) | null } = { addImage: null }
+export const boardBridge: { addImage: ((blob: Blob, meta?: { plot?: PlotSpec }) => Promise<void> | void) | null } = { addImage: null }
 
 /** Is the user typing in a text field or the code editor? Then board shortcuts stay out of the way. */
 const isTyping = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, select, .monaco-editor')
@@ -73,7 +77,11 @@ function BoardCanvas({ path }: { path: string }) {
 
   // Mutable interaction state (kept out of React to stay smooth while drawing).
   const view = useRef<View>({ x: 0, y: 0, zoom: 1 })
-  const live = useRef<{ stroke?: StrokeItem; lasso?: [number, number][]; drag?: { x: number; y: number; dx: number; dy: number } }>({})
+  const live = useRef<{
+    stroke?: StrokeItem; lasso?: [number, number][]; drag?: { x: number; y: number; dx: number; dy: number }
+    resize?: { ax: number; ay: number; box: { x: number; y: number; w: number; h: number }; s: number }
+  }>({})
+  const [liveGraph, setLiveGraph] = useState<{ id: string; spec: PlotSpec } | null>(null)
   const past = useRef<Item[][]>([])
   const future = useRef<Item[][]>([])
   const pointers = useRef(new Map<number, { x: number; y: number }>())
@@ -138,9 +146,26 @@ function BoardCanvas({ path }: { path: string }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       drawPaper(ctx, w, h, v, d.paper, pal)
       ctx.setTransform(dpr * v.zoom, 0, 0, dpr * v.zoom, -v.x * v.zoom * dpr, -v.y * v.zoom * dpr)
-      const drag = live.current.drag
-      const items = drag && sel ? d.items.map((it) => (sel.ids.has(it.id) ? translateItem(it, drag.dx, drag.dy) : it)) : d.items
+      const drag = live.current.drag, rs = live.current.resize
+      const items = drag && sel ? d.items.map((it) => (sel.ids.has(it.id) ? translateItem(it, drag.dx, drag.dy) : it))
+        : rs && sel ? d.items.map((it) => (sel.ids.has(it.id) ? scaleItem(it, rs.ax, rs.ay, rs.s) : it))
+        : d.items
       drawItems(ctx, live.current.stroke ? [...items, live.current.stroke] : items, pal, draw)
+      // Selection box with corner handles (drag a corner to resize).
+      if (sel && sel.ids.size && !live.current.lasso) {
+        const box = unionBox(items.filter((it) => sel.ids.has(it.id)).map(bounds))
+        if (box) {
+          ctx.lineWidth = 1.2 / v.zoom
+          ctx.strokeStyle = pal.selection
+          ctx.strokeRect(box.x, box.y, box.w, box.h)
+          const hs = 10 / v.zoom
+          ctx.fillStyle = pal.paper
+          for (const [hx, hy] of [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]]) {
+            ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs)
+            ctx.strokeRect(hx - hs / 2, hy - hs / 2, hs, hs)
+          }
+        }
+      }
       // Lasso while drawing, and the selection outline afterwards.
       ctx.lineWidth = 1.5 / v.zoom
       ctx.strokeStyle = pal.selection
@@ -190,6 +215,18 @@ function BoardCanvas({ path }: { path: string }) {
   // ---------- pointer input ----------
   const selBox = sel && doc ? unionBox(doc.items.filter((it) => sel.ids.has(it.id)).map(bounds)) : null
 
+  /** Which corner handle of the selection is under the pointer ("nw", "ne", "sw", "se")? */
+  const handleAt = (clientX: number, clientY: number, box: { x: number; y: number; w: number; h: number }) => {
+    const r = canvas.current!.getBoundingClientRect()
+    const px = clientX - r.left, py = clientY - r.top
+    const corners: [string, number, number][] = [['nw', box.x, box.y], ['ne', box.x + box.w, box.y], ['sw', box.x, box.y + box.h], ['se', box.x + box.w, box.y + box.h]]
+    for (const [name, wx, wy] of corners) {
+      const [sx, sy] = toScreen(wx, wy)
+      if (Math.abs(px - sx) < 12 && Math.abs(py - sy) < 12) return name
+    }
+    return null
+  }
+
   const onPointerDown = (e: React.PointerEvent) => {
     const d = docRef.current
     if (!d) return
@@ -223,7 +260,13 @@ function BoardCanvas({ path }: { path: string }) {
       erasing.current = true
       eraseAt(x, y, true)
     } else if (tool === 'lasso') {
-      if (selBox && x >= selBox.x && x <= selBox.x + selBox.w && y >= selBox.y && y <= selBox.y + selBox.h) {
+      const corner = selBox ? handleAt(e.clientX, e.clientY, selBox) : null
+      if (corner && selBox) {
+        // Resize around the opposite corner.
+        const ax = corner[0] === 'w' ? selBox.x + selBox.w : selBox.x
+        const ay = corner[1] === 'n' ? selBox.y + selBox.h : selBox.y
+        live.current.resize = { ax, ay, box: selBox, s: 1 }
+      } else if (selBox && x >= selBox.x && x <= selBox.x + selBox.w && y >= selBox.y && y <= selBox.y + selBox.h) {
         live.current.drag = { x, y, dx: 0, dy: 0 } // drag the selection
       } else {
         setSel(null)
@@ -291,6 +334,12 @@ function BoardCanvas({ path }: { path: string }) {
       live.current.drag.dx = x - live.current.drag.x
       live.current.drag.dy = y - live.current.drag.y
       draw()
+    } else if (live.current.resize) {
+      const r = live.current.resize
+      const [x, y] = toWorld(e.clientX, e.clientY)
+      // Uniform scale (keeps graphs and pictures in proportion).
+      r.s = Math.max(0.1, Math.max(Math.abs(x - r.ax) / Math.max(r.box.w, 1), Math.abs(y - r.ay) / Math.max(r.box.h, 1)))
+      draw()
     } else if (erasing.current) {
       const [x, y] = toWorld(e.clientX, e.clientY)
       eraseAt(x, y, false)
@@ -302,12 +351,27 @@ function BoardCanvas({ path }: { path: string }) {
     if (pinch.current) { if (pointers.current.size < 2) { pinch.current = null; scheduleSave(); force((n) => n + 1) } return }
     if (pan.current) { pan.current = null; scheduleSave(); force((n) => n + 1); return }
     const d = docRef.current!
-    const { stroke, lasso, drag } = live.current
+    const { stroke, lasso, drag, resize } = live.current
     live.current = {}
     if (erasing.current) { erasing.current = false; eraseEnd() }
+    const lassoSize = lasso ? Math.max(...lasso.map((p) => Math.abs(p[0] - lasso[0][0]) + Math.abs(p[1] - lasso[0][1]))) : 0
     if (stroke) {
       if (stroke.points.length === 1) stroke.points.push([stroke.points[0][0] + 0.1, stroke.points[0][1] + 0.1, stroke.points[0][2]]) // a dot
       commit([...d.items, stroke])
+    } else if (resize && sel) {
+      if (Math.abs(resize.s - 1) > 0.005) {
+        commit(d.items.map((it) => (sel.ids.has(it.id) ? scaleItem(it, resize.ax, resize.ay, resize.s) : it)))
+        setSel({ ...sel, poly: sel.poly.map(([x, y]) => [resize.ax + (x - resize.ax) * resize.s, resize.ay + (y - resize.ay) * resize.s] as [number, number]) })
+      }
+    } else if (lasso && lassoSize < 8 / view.current.zoom) {
+      // A tap (not a circle): select the thing under it, e.g. a graph to move or resize.
+      const hit = itemAt(d.items, lasso[0][0], lasso[0][1], 6 / view.current.zoom)
+      if (hit) {
+        const b = bounds(hit)
+        const poly: [number, number][] = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]]
+        lastLasso.current = b
+        setSel({ ids: new Set([hit.id]), poly, image: captureRegion(d.items, poly)?.dataUrl ?? null })
+      } else setSel(null)
     } else if (lasso && lasso.length > 4) {
       const ids = lassoSelect(d.items, lasso)
       const cap = captureRegion(d.items, lasso)
@@ -335,28 +399,39 @@ function BoardCanvas({ path }: { path: string }) {
   // ---------- images: paste, drop, insert ----------
   /** Add a picture: stored once as boards/<board>.board/assets/<sha>.<ext>, referenced by name.
    *  `near` places it to the right of that area (e.g. an AI diagram next to what you circled). */
-  const addImage = useCallback(async (file: Blob, opts: { near?: { x: number; y: number; w: number; h: number }; silent?: boolean } = {}) => {
-    if (file.size > 8 * 1024 * 1024) return toast('Image too large (max 8 MB)')
+  /** Store picture bytes once as assets/<sha>.<ext> and return its "asset:" name. */
+  const storeAsset = useCallback(async (file: Blob) => {
     const bytes = await file.arrayBuffer()
     const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('')
     const ext = ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'png' } as Record<string, string>)[file.type] ?? 'png'
     const name = `${hash}.${ext}`
-    try {
-      await files.upload(`${path.replace(/\.board\.json$/, '.board')}/assets/${name}`, file)
-    } catch (e) { return toast(`Image not saved: ${(e as Error).message}`) }
+    await files.upload(`${path.replace(/\.board\.json$/, '.board')}/assets/${name}`, file)
+    return `asset:${name}`
+  }, [path])
+
+  const addImage = useCallback(async (file: Blob, opts: { near?: { x: number; y: number; w: number; h: number }; silent?: boolean; plot?: PlotSpec } = {}) => {
+    if (file.size > 8 * 1024 * 1024) return toast('Image too large (max 8 MB)')
+    let src: string
+    try { src = await storeAsset(file) } catch (e) { return toast(`Image not saved: ${(e as Error).message}`) }
     const img = new Image()
     img.onload = () => {
       const d = docRef.current!
       const c = canvas.current!
       const v = view.current
       // Fit inside the visible part of the board (80% of it), never upscale.
-      const maxW = Math.min(opts.near ? 520 : 640, (c.clientWidth / v.zoom) * 0.8), maxH = (c.clientHeight / v.zoom) * 0.8
+      const maxW = Math.min(opts.near ? 480 : 640, (c.clientWidth / v.zoom) * 0.8), maxH = (c.clientHeight / v.zoom) * 0.8
       const s = Math.min(1, maxW / img.naturalWidth, maxH / img.naturalHeight)
       const w = img.naturalWidth * s, h = img.naturalHeight * s
-      const x = opts.near ? opts.near.x + opts.near.w + 40 : v.x + c.clientWidth / v.zoom / 2 - w / 2
-      const y = opts.near ? opts.near.y : v.y + c.clientHeight / v.zoom / 2 - h / 2
-      commit([...d.items, { id: newId(), kind: 'image', src: `asset:${name}`, x, y, w, h }])
-      if (!opts.silent) toast('Image added. Use the lasso to circle a problem in it and ask the AI.')
+      // Next to what you circled, in a spot that doesn't cover your writing.
+      const { x, y } = opts.near
+        ? freeSpot(d.items, opts.near, w, h)
+        : { x: v.x + c.clientWidth / v.zoom / 2 - w / 2, y: v.y + c.clientHeight / v.zoom / 2 - h / 2 }
+      const item: ImageItem = { id: newId(), kind: 'image', src, x, y, w, h, ...(opts.plot ? { plot: opts.plot } : {}) }
+      commit([...d.items, item])
+      // Select it right away (lasso tool): drag to move it, corners to resize.
+      setTool('lasso')
+      setSel({ ids: new Set([item.id]), poly: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], image: captureRegion([...d.items, item], [[x, y], [x + w, y], [x + w, y + h], [x, y + h]])?.dataUrl ?? null })
+      if (!opts.silent) toast('Image added. Drag it to move, drag a corner to resize, or circle part of it and ask the AI.')
       // If it landed off-screen (e.g. a diagram next to what you circled), glide the view to show it.
       const vw = c.clientWidth / v.zoom, vh = c.clientHeight / v.zoom
       if (x < v.x || y < v.y || x + w > v.x + vw || y + h > v.y + vh) {
@@ -369,14 +444,32 @@ function BoardCanvas({ path }: { path: string }) {
         scheduleSave()
       }
     }
-    img.src = resolveSrc(`asset:${name}`)
-  }, [commit, path, draw, scheduleSave])
+    img.src = resolveSrc(src)
+  }, [commit, storeAsset, draw, scheduleSave])
 
   // Let other parts of the app (AI diagrams) put pictures on this board.
   useEffect(() => {
-    boardBridge.addImage = (blob) => addImage(blob, { near: lastLasso.current ?? undefined, silent: true })
+    boardBridge.addImage = (blob, meta) => addImage(blob, { near: lastLasso.current ?? undefined, silent: true, plot: meta?.plot })
     return () => { boardBridge.addImage = null }
   }, [addImage])
+
+  /** A live graph opened from the board was adjusted: swap the picture, keep its place and width. */
+  const replaceGraph = async (id: string, svg: SVGSVGElement, plot: PlotSpec) => {
+    const d = docRef.current
+    const old = d?.items.find((it) => it.id === id)
+    if (!d || !old || old.kind !== 'image') return
+    const blob = await svgToPng(svg, pal.ink, pal.paper)
+    const src = await storeAsset(blob)
+    const img = new Image()
+    img.onload = () => {
+      const h = old.w * (img.naturalHeight / img.naturalWidth)
+      commit(docRef.current!.items.map((it) => (it.id === id ? { ...old, src, h, plot } : it)))
+      setLiveGraph(null)
+      setSel(null)
+      toast('Graph on the board updated')
+    }
+    img.src = resolveSrc(src)
+  }
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
@@ -431,6 +524,9 @@ function BoardCanvas({ path }: { path: string }) {
   if (!doc) return <div className="board-empty muted">Loading board…</div>
 
   // Floating AI menu sits just above the lasso region.
+  const selectedGraph = sel && sel.ids.size === 1
+    ? (doc.items.find((it) => sel.ids.has(it.id) && it.kind === 'image' && it.plot) as ImageItem | undefined)
+    : undefined
   // Floating AI menu: above the lasso, or below it when there's no room under the toolbar.
   let menuPos: { left: number; top: number; below: boolean } | null = null
   if (sel) {
@@ -518,6 +614,12 @@ function BoardCanvas({ path }: { path: string }) {
         <div className={`ai-pop ${menuPos.below ? 'below' : ''}`} style={{ left: menuPos.left, top: menuPos.top }} onPointerDown={(e) => e.stopPropagation()}>
           {!asking ? (
             <>
+              {selectedGraph && (
+                <>
+                  <button className="ai-btn primary" onClick={() => setLiveGraph({ id: selectedGraph.id, spec: selectedGraph.plot! })} title="Pan, zoom, trace and animate it"><LineChart size={14} /> Open live graph</button>
+                  <span className="tb-div" />
+                </>
+              )}
               <span className="ai-pop-label"><Wand2 size={14} /> Ask AI</span>
               {AI_ACTIONS.map((a) => (
                 <button key={a.action} className="ai-btn" onClick={() => ask(a.action)} disabled={!sel.image}><a.icon size={14} /> {a.label}</button>
@@ -534,6 +636,17 @@ function BoardCanvas({ path }: { path: string }) {
               <button type="button" className="ai-btn icon" onClick={() => setAsking(false)}><X size={14} /></button>
             </form>
           )}
+        </div>
+      )}
+
+      {liveGraph && (
+        <div className="live-graph" onPointerDown={(e) => e.stopPropagation()}>
+          <div className="live-graph-head">
+            <strong><LineChart size={15} /> Live graph</strong>
+            <span className="muted small">Adjust it, then update the picture on your board</span>
+            <button className="ai-btn icon" title="Close" onClick={() => setLiveGraph(null)}><X size={15} /></button>
+          </div>
+          <InteractivePlot spec={liveGraph.spec} onPutOnBoard={(svg, spec) => replaceGraph(liveGraph.id, svg, spec)} />
         </div>
       )}
     </div>
