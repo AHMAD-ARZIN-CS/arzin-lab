@@ -179,6 +179,12 @@ export const renamePath = guard(async (from: string, to: string) => {
 })
 
 export const deletePath = guard(async (path: string) => {
+  // Deleting a board that's open: close it first and stop its final autosave, which would
+  // otherwise write the file right back after it was moved to the trash.
+  if (path.endsWith('.board.json') || path === 'boards' || path.startsWith('boards/')) {
+    for (const b of boardList(state.tree)) if (b === path || b.startsWith(path + '/')) deletedBoards.add(b)
+    if (state.activeBoard && deletedBoards.has(state.activeBoard)) setState({ activeBoard: null })
+  }
   await files.remove(path)
   setState((s) => {
     const open = s.open.filter((f) => !(f.path === path || f.path.startsWith(path + '/')))
@@ -611,7 +617,11 @@ export function allFiles(nodes: TreeNode[] = state.tree): string[] {
 export const boardList = (tree: TreeNode[]) => allFiles(tree).filter((p) => p.endsWith('.board.json'))
 export const boardName = (path: string) => path.split('/').pop()!.replace(/\.board\.json$/, '')
 
+/** Boards deleted in this session: their editor must not save them again. */
+export const deletedBoards = new Set<string>()
+
 export function openBoard(path: string) {
+  deletedBoards.delete(path)
   setState({ activeBoard: path, mode: 'board' })
 }
 

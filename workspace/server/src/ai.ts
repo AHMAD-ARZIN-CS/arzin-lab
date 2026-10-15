@@ -22,6 +22,9 @@ Rules:
 - Start with plain English, then the details. Short paragraphs, no filler.
 - Ground everything in THEIR code, input, and execution state when provided. Quote their identifiers.
 - Use Markdown. Code in fenced blocks with a language tag.
+- MATH: write every formula in LaTeX so it is typeset like a textbook: inline $\\int e^{x}\\sin x\\,dx$, and important
+  equations on their own line as $$...$$ (e.g. $$\\int u\\,dv = uv - \\int v\\,du$$). Never write math as plain text like
+  "e^x sin x dx" or with * for multiplication. Don't put LaTeX inside code blocks.
 - Never invent program output or performance numbers. If you'd need to run something to know, say so.
 - Do not write the full solution to a practice problem unless the request explicitly asks for a full solution.
 - End with a line "**Go deeper:**" followed by 2-3 short follow-up topics as a bullet list (omit for hints).`
@@ -51,7 +54,8 @@ export interface AiContext {
 }
 
 const BOARD_INTRO = `The learner circled this region of their whiteboard: handwriting, a sketch, or a pasted screenshot of a problem.
-Start with a short "**What I see:**" block transcribing it (math in plain text or LaTeX-ish notation, code in a code block), so they can confirm you read the handwriting correctly. If part is illegible, say which part.`
+Start with a short "**What I see:**" block transcribing it (math in LaTeX between $$...$$ so it's typeset, code in a code block), so they can confirm you read the handwriting correctly. If part is illegible, say which part.
+Write all math in LaTeX ($...$ inline, $$...$$ for equations); never as plain text like e^x or 4*x.`
 
 /** How to draw: the workspace renders these fenced blocks as real graphics. */
 export const DIAGRAM_GUIDE = `DIAGRAMS: the learner's app draws these fenced blocks as real graphics. Prefer them over ASCII art.
@@ -61,7 +65,9 @@ export const DIAGRAM_GUIDE = `DIAGRAMS: the learner's app draws these fenced blo
     "areas":[{"fn":"x^2","from":0,"to":1,"label":"area"}],"xlabel":"x","ylabel":"y"}
    Formulas use x only, mathjs syntax: + - * / ^, sqrt, sin, cos, tan, exp, log (natural), abs, pi, e. Pick a window that shows the interesting part; mark roots, extrema, intersections as points.
 2. Processes, algorithms, code flow, recursion trees, data structures, state machines → a \`\`\`mermaid block
-   (flowchart TD / LR, graph, stateDiagram-v2, sequenceDiagram, classDiagram). Keep labels short; quote labels containing symbols: A["x = x + 1"].
+   (flowchart TD / LR, graph, stateDiagram-v2, sequenceDiagram, classDiagram). Keep labels short; quote every label: A["x = x + 1"].
+   Math in mermaid labels and plot labels can't be typeset, so write it with Unicode the way a textbook shows it:
+   eˣ, x², x³, √x, π, θ, ∫, Σ, ·, ≤, ≥, ≠, →, ∞ (e.g. A["I = eˣ sin x − ∫ eˣ cos x dx"]). Never e^x, x^2 or 4*x in labels, and no LaTeX there.
 3. Only if neither fits (e.g. geometry), a \`\`\`svg block: one <svg> with a viewBox ≤ 640x400, no scripts/images, colors via currentColor plus #3b82f6 #22c55e #f59e0b #ef4444 #a855f7.
 Use at most two diagrams, each followed by one sentence saying what to notice.`
 const VISUAL_SVG = DIAGRAM_GUIDE

@@ -10,7 +10,7 @@ import {
   type BoardDoc, type Item, type Paper, type StrokeItem, type View,
 } from '../lib/board'
 import { api, files } from '../lib/api'
-import { askAi, boardName, toast, useStore, type AiAction } from '../lib/store'
+import { askAi, boardName, deletedBoards, toast, useStore, type AiAction } from '../lib/store'
 import { useTheme } from '../lib/theme'
 
 type Tool = 'pen' | 'highlighter' | 'eraser' | 'lasso' | 'text' | 'hand'
@@ -99,7 +99,7 @@ function BoardCanvas({ path }: { path: string }) {
   // Saved as segments on the server (see server/src/boards.ts): only the changed segment is rewritten.
   const save = useCallback(() => {
     const d = docRef.current
-    if (!d) return Promise.resolve()
+    if (!d || deletedBoards.has(path)) return Promise.resolve()
     return api('/api/board', { method: 'PUT', json: { path, doc: { paper: d.paper, view: view.current, items: d.items } } })
   }, [path])
   const saveTimer = useRef(0)

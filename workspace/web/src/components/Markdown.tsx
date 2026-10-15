@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { PALETTES } from '../lib/board'
 import { renderMermaid, renderPlot, svgToPng, type PlotSpec } from '../lib/diagrams'
 import { editorThemeName, monaco } from '../lib/monaco'
+import { extractMath, insertMath, prettyMermaid } from '../lib/math'
 import { getState } from '../lib/store'
 import { resolvedTheme } from '../lib/theme'
 import { boardBridge } from './Board'
@@ -23,7 +24,7 @@ export async function placeOnBoard(svg: SVGSVGElement) {
 
 async function renderDiagram(lang: string, source: string): Promise<string> {
   if (lang === 'plot') return renderPlot(JSON.parse(source) as PlotSpec)
-  if (lang === 'mermaid') return renderMermaid(source)
+  if (lang === 'mermaid') return renderMermaid(prettyMermaid(source))
   const clean = DOMPurify.sanitize(source, { USE_PROFILES: { svg: true, svgFilters: true } })
   if (!clean.includes('<svg')) throw new Error('not a valid SVG')
   return clean
@@ -36,7 +37,13 @@ export function Markdown({ text, codeActions = [], streaming = false, onDiagram 
   /** Called with the first diagram once it's drawn (used to put Visualize answers on the board). */
   onDiagram?: (svg: SVGSVGElement) => void
 }) {
-  const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: false }) as string), [text])
+  const html = useMemo(() => {
+    // Math is taken out first (so Markdown doesn't mangle it), the rest is sanitized,
+    // then KaTeX's typeset math (generated from text, trust: false) is put back.
+    const { text: prose, math } = extractMath(text)
+    const safe = DOMPurify.sanitize(marked.parse(prose, { async: false, gfm: true, breaks: false }) as string)
+    return insertMath(safe, math)
+  }, [text])
   const host = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = host.current

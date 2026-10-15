@@ -4,6 +4,7 @@
 //   ```mermaid  flowcharts, trees, call stacks, state machines (Mermaid, strict security)
 // Both produce plain SVG, which can be put on a board as a picture.
 import DOMPurify from 'dompurify'
+import { prettyMath } from './math'
 import { resolvedTheme } from './theme'
 
 // ---------------- plot ----------------
@@ -115,7 +116,8 @@ export async function renderPlot(spec: PlotSpec): Promise<string> {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="ui-sans-serif, system-ui, sans-serif">${parts.join('')}</svg>`
 }
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
+// Labels in graphs read like math: "x^2 - 4*x" → "x² − 4·x".
+const esc = (s: string) => prettyMath(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
 // ---------------- mermaid ----------------
 

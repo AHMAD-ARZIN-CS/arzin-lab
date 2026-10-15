@@ -451,6 +451,8 @@ button.st-item:hover { background: rgba(255, 255, 255, 0.12); }
 .md ul, .md ol { padding-left: 20px; margin: 4px 0; }
 .md table { border-collapse: collapse; margin: 8px 0; }
 .md th, .md td { border: 1px solid var(--border); padding: 3px 9px; }
+.md .katex { font-size: 1.08em; }
+.md .katex-display { overflow-x: auto; overflow-y: hidden; padding: 6px 2px; margin: 8px 0; }
 .md-svg { margin: 10px 0; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); overflow-x: auto; }
 .md-svg svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .seg.slim { margin: 0; }

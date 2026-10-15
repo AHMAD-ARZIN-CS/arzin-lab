@@ -16,6 +16,7 @@
     "dockerode": "^5.0.1",
     "dompurify": "^3.4.16",
     "express": "^5.2.1",
+    "katex": "0.18.9",
     "lucide-react": "1.47.0",
     "marked": "^18.1.0",
     "mathjs": "15.2.0",

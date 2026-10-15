@@ -75,6 +75,9 @@ async function externalizeImages(items: Item[], dir: string) {
 export async function saveBoard(rel: string, doc: { paper?: string; view?: unknown; items: Item[] }) {
   const abs = checkBoardPath(rel)
   if (!Array.isArray(doc?.items)) throw new FsError('board items must be a list')
+  // Boards are created as a file first (New board / lecture → board). If the file is gone, the board
+  // was deleted: refuse, so a still-open editor's last autosave can't bring it back from the trash.
+  if (!existsSync(abs)) throw new FsError('This board was deleted, so it was not saved again.', 410)
   const dir = resolveSafe(boardDir(rel))
   await fs.mkdir(dir, { recursive: true })
   await externalizeImages(doc.items, dir)

@@ -21,6 +21,8 @@ const put = (doc) => fetch(`${BASE}/api/board`, { method: 'PUT', headers: H, bod
 const get = () => fetch(`${BASE}/api/board?path=${encodeURIComponent(BOARD)}`, { headers: H }).then((r) => r.json())
 
 try {
+  // Boards are created as a file first (like "New board" does).
+  fs.writeFileSync(path.join(ROOT, BOARD), JSON.stringify({ version: 1, paper: 'dots', items: [] }))
   const r1 = await put({ paper: 'dots', items })
   const segs = fs.readdirSync(DIR).filter((f) => f.startsWith('seg-')).sort()
   check('700 strokes split into segments of 300', r1.segments === 3 && segs.length === 3, JSON.stringify(r1))
@@ -47,6 +49,11 @@ try {
   fs.writeFileSync(path.join(ROOT, 'boards', 'zz-old.board.json'), JSON.stringify({ version: 1, paper: 'grid', items: [stroke(1)] }))
   const old = await fetch(`${BASE}/api/board?path=${encodeURIComponent('boards/zz-old.board.json')}`, { headers: H }).then((r) => r.json())
   check('old-format boards still load', old.items.length === 1 && old.paper === 'grid')
+
+  // A deleted board can't be brought back by a late autosave.
+  fs.rmSync(path.join(ROOT, BOARD))
+  const late = await fetch(`${BASE}/api/board`, { method: 'PUT', headers: H, body: JSON.stringify({ path: BOARD, doc: { paper: 'dots', items: [] } }) })
+  check('saving a deleted board is refused', late.status === 410 && !fs.existsSync(path.join(ROOT, BOARD)), `HTTP ${late.status}`)
 } finally {
   fs.rmSync(DIR, { recursive: true, force: true })
   fs.rmSync(path.join(ROOT, BOARD), { force: true })
