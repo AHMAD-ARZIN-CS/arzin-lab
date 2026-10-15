@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { askText } from './Dialogs'
 import { appendNote } from './NotesPanel'
-import { Markdown, type CodeAction } from './Markdown'
+import { Markdown, placeOnBoard, type CodeAction } from './Markdown'
 import { revealLine } from './CodeEditor'
-import { askAi, contextLabel, createFile, currentContext, deleteThread, followUp, getState, openFile, propose, toast, useStore, type Thread } from '../lib/store'
+import { askAi, contextLabel, createFile, currentContext, deleteThread, followUp, markPlaced, getState, openFile, propose, toast, useStore, type Thread } from '../lib/store'
 
 const SESSION_START = Date.now()
 
@@ -65,6 +65,11 @@ function ThreadView({ t, showContext }: { t: Thread; showContext: boolean }) {
   const [collapsed, setCollapsed] = useState(() => t.status !== 'streaming' && Date.parse(t.time ?? '') < SESSION_START)
   const [more, setMore] = useState('')
   const busy = t.status === 'streaming'
+  // "Visualize" on the board: the first diagram goes onto the board next to what you circled (once).
+  const autoPlace = useCallback((svg: SVGSVGElement) => {
+    if (t.action !== 'visual' || !t.image || t.placed || t.status !== 'done') return
+    placeOnBoard(svg).then((ok) => { if (ok) { markPlaced(t.id); toast('Diagram added to your board, next to what you circled') } })
+  }, [t.action, t.image, t.placed, t.status, t.id])
   const when = t.time ? new Date(t.time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''
   return (
     <div className={`thread ${t.status}`}>
@@ -83,7 +88,7 @@ function ThreadView({ t, showContext }: { t: Thread; showContext: boolean }) {
       {!collapsed && (
         <div className="thread-body">
           {t.image && <img className="thread-img" src={t.image} alt="The circled region that was sent" title="What the AI received" />}
-          {t.answer ? <Markdown text={t.answer} codeActions={codeActions} streaming={busy && !t.followUps.length} /> : busy && <div className="muted"><span className="spinner" /> Thinking…</div>}
+          {t.answer ? <Markdown text={t.answer} codeActions={codeActions} streaming={busy && !t.followUps.length} onDiagram={autoPlace} /> : busy && <div className="muted"><span className="spinner" /> Thinking…</div>}
           {t.followUps.map((f, i) => (
             <div key={i} className="follow">
               <div className="follow-q">› {f.q}</div>
@@ -93,6 +98,7 @@ function ThreadView({ t, showContext }: { t: Thread; showContext: boolean }) {
           {t.status === 'error' && <div className="error">⚠ {t.error}</div>}
           {t.status === 'done' && (
             <div className="thread-actions">
+              <button className="btn small primary" onClick={() => followUp(t.id, 'Explain this again with a clear diagram (a plot for math, a mermaid diagram for code, processes or data structures), then walk me through the diagram.', { wantDiagram: true })}>Explain with a diagram</button>
               <button className="btn small" onClick={() => followUp(t.id, 'Go deeper: explain this in more detail, with what happens in memory and one more example.')}>Go deeper</button>
               <button className="btn small" onClick={() => followUp(t.id, 'Explain it more simply, like I am new to programming.')}>Simpler</button>
               <button className="btn small" onClick={() => appendNote(t)}>Save to notes</button>

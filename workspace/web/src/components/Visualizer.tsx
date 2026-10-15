@@ -1,15 +1,20 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { askAi, jumpFocused, languageOf, setState, setStep, useStore, visualize } from '../lib/store'
+import { CallTree, Flowchart, Timeline } from './VizDiagrams'
 import {
   flatten, indexStep, indexVars, outputAt, subscriptsOnLine,
   type Frame, type Step, type TargetKey, type Val,
 } from '../lib/trace'
+
+type View = 'memory' | 'calls' | 'timeline' | 'flow'
+const VIEWS: [View, string][] = [['memory', 'Memory'], ['calls', 'Call tree'], ['timeline', 'Timeline'], ['flow', 'Flowchart']]
 
 interface Ctx {
   step: Step
   changed: Set<string>
   resolve: (addr: string | null) => TargetKey | null
   python: boolean
+  bars: boolean
 }
 const VizCtx = createContext<Ctx | null>(null)
 const useViz = () => useContext(VizCtx)!
@@ -24,6 +29,9 @@ export function Visualizer() {
   const active = useStore((s) => s.active)
   const current = useStore((s) => s.open.find((f) => f.path === s.trace?.file)?.content)
   const lang = useStore((s) => languageOf(s.active))
+  const [view, setView] = useState<View>('memory')
+  const [bars, setBars] = useState(() => localStorage.getItem('lab.bars') === '1')
+  useEffect(() => { localStorage.setItem('lab.bars', bars ? '1' : '0') }, [bars])
 
   const steps = result?.trace?.steps ?? []
   useEffect(() => {
@@ -93,7 +101,18 @@ export function Visualizer() {
       {trace.truncated && <div className="banner warn">Stopped recording after {steps.length} steps (limit). Loops that run longer are cut off; use smaller input to see the whole run.</div>}
       {trace.error && <div className="banner error">⚠ {trace.error}{trace.errorLine ? ` (line ${trace.errorLine})` : ''} <button className="link-btn" onClick={() => askAi({ action: 'error', selection: trace.error!, lines: trace.errorLine ? [trace.errorLine, trace.errorLine] : undefined, extraDiagnostics: trace.error! })}>Why?</button></div>}
       {!steps.length && !trace.error && <div className="viz-empty">No steps were recorded.</div>}
-      {step && <StepView step={step} prev={steps[stepIdx - 1]} python={trace.language === 'python'} source={result.source} output={outputAt(trace, step)} />}
+      {step && (
+        <div className="viz-views">
+          <div className="seg slim">
+            {VIEWS.map(([id, label]) => <button key={id} className={view === id ? 'on' : ''} onClick={() => setView(id)}>{label}</button>)}
+          </div>
+          {view === 'memory' && <label className="bars-toggle muted small"><input type="checkbox" checked={bars} onChange={(e) => setBars(e.target.checked)} /> arrays as bars</label>}
+        </div>
+      )}
+      {step && view === 'memory' && <StepView step={step} prev={steps[stepIdx - 1]} python={trace.language === 'python'} source={result.source} output={outputAt(trace, step)} bars={bars} />}
+      {step && view === 'calls' && <div className="viz-state"><CallTree trace={trace} step={stepIdx} /></div>}
+      {step && view === 'timeline' && <div className="viz-state"><Timeline trace={trace} step={stepIdx} /></div>}
+      {step && view === 'flow' && <div className="viz-state"><Flowchart source={result.source} file={result.file} line={step.line} /></div>}
       {step && (
         <div className="viz-footer">
           <button className="btn small" onClick={() => askAi({ action: 'ask', question: 'Explain what is happening at this exact step of the execution, and why the variables have these values.' })}>Explain this step</button>
@@ -113,7 +132,7 @@ function eventLabel(s: Step) {
   return 'next line to run'
 }
 
-function StepView({ step, prev, python, source, output }: { step: Step; prev?: Step; python: boolean; source: string; output: string }) {
+function StepView({ step, prev, python, source, output, bars }: { step: Step; prev?: Step; python: boolean; source: string; output: string; bars: boolean }) {
   const changed = useMemo(() => {
     const a = flatten(prev), b = flatten(step), out = new Set<string>()
     if (!prev) return out
@@ -128,7 +147,7 @@ function StepView({ step, prev, python, source, output }: { step: Step; prev?: S
   const heap = Object.entries(step.heap)
 
   return (
-    <VizCtx.Provider value={{ step, changed, resolve, python }}>
+    <VizCtx.Provider value={{ step, changed, resolve, python, bars }}>
       <div className="viz-state" ref={box}>
         {output && <div className="viz-output"><div className="viz-label">Output so far</div><pre>{output}</pre></div>}
         <div className="viz-columns">
@@ -191,7 +210,7 @@ function FrameBox({ frame, active, depthKey, subs }: { frame: Frame; active: boo
 }
 
 function ValueView({ v, path, markers }: { v: Val; path: string; markers?: { strong: { name: string; value: number }[]; weak: { name: string; value: number }[] } }): ReactNode {
-  const { changed, resolve, python, step } = useViz()
+  const { changed, resolve, python, step, bars } = useViz()
   const ch = changed.has(path) ? ' changed' : ''
   switch (v.k) {
     case 'prim': return <span className={`val prim${ch}`}>{v.v}</span>
@@ -221,6 +240,36 @@ function ValueView({ v, path, markers }: { v: Val; path: string; markers?: { str
     case 'list': {
       const elKey = v.addr ? (i: number) => `el:${BigInt(v.addr!).toString(16)}:${i}` : () => undefined
       const lenChanged = changed.has(path + '#len')
+      // Bars: numbers drawn as heights. Sorting and running sums become easy to see.
+      const nums = v.items.map((it) => (it.k === 'prim' ? Number(it.v) : NaN))
+      if (bars && v.items.length > 0 && nums.every(Number.isFinite)) {
+        const lo = Math.min(0, ...nums), hi = Math.max(...nums, lo + 1)
+        return (
+          <div className={`list kind-${v.kind}`}>
+            <div className={`list-head${lenChanged ? ' changed' : ''}`}>{v.kind}<span className="muted"> size {v.size}</span></div>
+            <div className="bars">
+              {nums.map((n, i) => {
+                const strong = markers?.strong.filter((m) => m.value === i) ?? []
+                const weak = markers?.weak.filter((m) => m.value === i) ?? []
+                return (
+                  <div key={i} className={`bar-col${strong.length ? ' indexed' : ''}${changed.has(`${path}#${i}`) ? ' changed' : ''}`} data-key={elKey(i)}>
+                    <span className="bar-val">{n}</span>
+                    <div className={`bar${n < 0 ? ' neg' : ''}`} style={{ height: `${6 + (Math.abs(n - (n < 0 ? 0 : lo)) / (hi - lo)) * 90}px` }} />
+                    <span className="cell-idx">{i}</span>
+                    {(strong.length > 0 || weak.length > 0) && (
+                      <div className="bar-markers">
+                        {strong.map((m) => <span key={m.name} className="marker strong">↑{m.name}</span>)}
+                        {weak.map((m) => <span key={m.name} className="marker weak">{m.name}</span>)}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              {v.items.length < v.size && <div className="cell more">+{v.size - v.items.length} more</div>}
+            </div>
+          </div>
+        )
+      }
       return (
         <div className={`list kind-${v.kind}`}>
           <div className={`list-head${lenChanged ? ' changed' : ''}`}>{v.kind}<span className="muted"> size {v.size}</span>{v.text ? <span className="muted"> "{v.text}"</span> : null}</div>

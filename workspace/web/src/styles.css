@@ -454,6 +454,50 @@ button.st-item:hover { background: rgba(255, 255, 255, 0.12); }
 .md-svg { margin: 10px 0; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); overflow-x: auto; }
 .md-svg svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .seg.slim { margin: 0; }
+
+/* diagrams in answers */
+.diagram { margin: 10px 0 4px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); overflow-x: auto; text-align: center; }
+.diagram svg { max-width: 100%; height: auto; }
+.diagram-loading { color: var(--muted); font-size: 12px; padding: 20px; }
+.diagram-error { color: var(--yellow); font-size: 12px; text-align: left; }
+
+/* visualizer graphic views */
+.viz-views { display: flex; align-items: center; gap: 10px; padding: 8px 12px 0; flex-wrap: wrap; }
+.viz-views .seg { flex: 1; min-width: 260px; }
+.bars-toggle { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.bars { display: flex; align-items: flex-end; gap: 4px; padding: 4px 2px 26px; min-height: 130px; }
+.bar-col { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 28px; }
+.bar { width: 22px; border-radius: 5px 5px 2px 2px; background: var(--accent); opacity: 0.75; transition: height 0.35s var(--ease); }
+.bar.neg { background: var(--red); }
+.bar-col.indexed .bar { background: var(--green); opacity: 1; box-shadow: 0 0 0 3px var(--green-soft); }
+.bar-col.changed .bar-val { background: var(--yellow-soft); border-radius: 4px; }
+.bar-val { font: 11px var(--mono); padding: 0 3px; }
+.bar-col .cell-idx { position: static; }
+.bar-markers { position: absolute; top: 100%; display: flex; flex-direction: column; align-items: center; }
+.calltree, .timeline, .flowchart { display: flex; flex-direction: column; gap: 8px; }
+.calltree p, .timeline p { margin: 0; }
+.calltree-svg { overflow: visible; }
+.ct-edge { fill: none; stroke: var(--border-strong); stroke-width: 1.6; }
+.ct-node { cursor: pointer; }
+.ct-node rect { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.4; transition: fill 0.2s; }
+.ct-node.ct-waiting rect { stroke: var(--accent); fill: var(--accent-soft); }
+.ct-node.ct-now rect { stroke: var(--green); fill: var(--green-soft); stroke-width: 2.4; }
+.ct-node.ct-done { opacity: 0.75; }
+.ct-fn { font: 600 11.5px var(--mono); fill: var(--text); }
+.ct-ret { font: 10.5px var(--mono); fill: var(--muted); }
+.ct-now .ct-ret { fill: var(--green); }
+.tl-row { display: grid; grid-template-columns: minmax(110px, 160px) 1fr auto; gap: 10px; align-items: center; }
+.tl-label { display: flex; flex-direction: column; min-width: 0; }
+.tl-label .var-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-now { font: 600 13px var(--mono); color: var(--accent); }
+.tl-chart { width: 100%; height: 46px; cursor: pointer; background: var(--surface-2); border-radius: 6px; }
+.tl-line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.tl-cursor { stroke: var(--green); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.tl-dot { fill: var(--green); }
+.tl-range { font: 10.5px var(--mono); white-space: nowrap; }
+.flowchart-svg { overflow: auto; text-align: center; }
+.flowchart-svg svg { max-width: 100%; height: auto; }
+.flowchart-svg .fc-current rect, .flowchart-svg .fc-current polygon, .flowchart-svg .fc-current path { fill: var(--green-soft) !important; stroke: var(--green) !important; stroke-width: 3px !important; }
 .ctx-chip { font-size: 10.5px; padding: 1px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 .pane-foot-note { margin: 4px 2px; }
 .code-actions { display: flex; gap: 4px; margin: 6px 0 10px; flex-wrap: wrap; }

@@ -18,6 +18,8 @@ export interface Thread {
   image?: string
   /** What this conversation is about ("practice:two-sum", "file:x.cpp", "board:…", "lecture:…"). */
   context: string
+  /** A Visualize answer's diagram was already put on the board (don't add it twice). */
+  placed?: boolean
   time: string
   answer: string; status: 'streaming' | 'done' | 'error'; error?: string; sessionId?: string; followUps: { q: string; a: string }[]
 }
@@ -438,6 +440,12 @@ function persistChats(key: string) {
   }, 300))
 }
 
+export function markPlaced(id: string) {
+  setState((s) => ({ threads: s.threads.map((t) => (t.id === id ? { ...t, placed: true } : t)) }))
+  const t = state.threads.find((x) => x.id === id)
+  if (t) persistChats(t.context)
+}
+
 export function deleteThread(id: string) {
   const t = state.threads.find((x) => x.id === id)
   setState((s) => ({ threads: s.threads.filter((x) => x.id !== id) }))
@@ -451,7 +459,7 @@ async function loadChats() {
   setState({ threads: saved })
 }
 
-export function followUp(threadId: string, question: string) {
+export function followUp(threadId: string, question: string, opts: { wantDiagram?: boolean } = {}) {
   const t = state.threads.find((x) => x.id === threadId)
   if (!t?.sessionId) return toast('This answer can\'t be continued (no session).')
   const traceOk = state.trace?.trace && state.trace.file === t.file
@@ -461,7 +469,7 @@ export function followUp(threadId: string, question: string) {
   }))
   const sub = request({
     t: 'ai', resume: t.sessionId,
-    context: { action: 'ask', question, stepState: traceOk ? describeStep(state.trace!.trace!, state.step, state.trace!.source) : undefined },
+    context: { action: 'ask', question, wantDiagram: opts.wantDiagram, stepState: traceOk ? describeStep(state.trace!.trace!, state.step, state.trace!.source) : undefined },
   }, (m) => {
     if (m.t === 'ai-delta') patchLast((a) => a + m.text)
     else if (m.t === 'ai-done' || m.t === 'error') {

@@ -10,6 +10,7 @@ import { WebSocketServer } from 'ws'
 import { DEV_WEB_PORT, PORT, ROOT, WORKSPACE_DIR } from './config.js'
 import * as files from './files.js'
 import { publicLanguages } from './languages.js'
+import { loadBoard, saveBoard } from './boards.js'
 import { listLectures, readLecture } from './lectures.js'
 import { installProblem, listLibrary, readProgress, referenceSolution } from './library.js'
 import { createProblem, listProblems, seedRoot } from './practice.js'
@@ -49,7 +50,9 @@ app.use('/api', (req, res, next) => {
   if (req.headers['x-lab'] !== '1') return res.status(403).json({ error: 'Missing X-Lab header' })
   next()
 })
-app.use('/api', express.json({ limit: '8mb' }))
+// Boards can be big (thousands of strokes); everything else stays small.
+const jsonSmall = express.json({ limit: '8mb' }), jsonBoard = express.json({ limit: '64mb' })
+app.use('/api', (req, res, next) => (req.path === '/board' ? jsonBoard : jsonSmall)(req, res, next))
 
 const wrap = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) =>
   fn(req, res).then((data) => { if (!res.headersSent) res.json(data ?? { ok: true }) }).catch(next)
@@ -80,6 +83,8 @@ app.get('/api/version', wrap(async (req) => ({ content: await files.readVersion(
 app.post('/api/snapshot', wrap(async (req) => { await files.snapshot(req.body.path, req.body.label ?? 'manual') }))
 app.get('/api/practice', wrap(async () => listProblems()))
 app.post('/api/practice', wrap(async (req) => createProblem(req.body)))
+app.get('/api/board', wrap(async (req) => loadBoard(q(req, 'path'))))
+app.put('/api/board', wrap(async (req) => saveBoard(String(req.body.path), req.body.doc)))
 app.get('/api/chats', wrap(async () => files.allChats()))
 app.put('/api/chats', wrap(async (req) => { await files.saveChats(String(req.body.key), req.body.threads) }))
 app.get('/api/library', wrap(async () => listLibrary()))

@@ -100,15 +100,24 @@ export async function rename(from: string, to: string) {
   if (existsSync(b)) throw new FsError(`${to} already exists`, 409)
   await fs.mkdir(path.dirname(b), { recursive: true })
   await fs.rename(a, b)
+  // A board's segments and pictures live in a folder next to it: move it along.
+  if (/\.board\.json$/.test(from) && /\.board\.json$/.test(to)) {
+    const da = a.replace(/\.board\.json$/, '.board'), db = b.replace(/\.board\.json$/, '.board')
+    if (existsSync(da) && !existsSync(db)) await fs.rename(da, db)
+  }
 }
 
 /** Delete = move to .lab/trash, so nothing is ever lost by a misclick. */
 export async function remove(rel: string) {
   const abs = resolveSafe(rel)
   if (abs === ROOT) throw new FsError('cannot delete the workspace root')
-  const dest = path.join(META_DIR, 'trash', new Date().toISOString().replace(/[:.]/g, '-'), rel)
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const dest = path.join(META_DIR, 'trash', stamp, rel)
   await fs.mkdir(path.dirname(dest), { recursive: true })
   await fs.rename(abs, dest)
+  if (/\.board\.json$/.test(rel) && existsSync(abs.replace(/\.board\.json$/, '.board'))) {
+    await fs.rename(abs.replace(/\.board\.json$/, '.board'), dest.replace(/\.board\.json$/, '.board'))
+  }
 }
 
 // ---------------- version history ----------------

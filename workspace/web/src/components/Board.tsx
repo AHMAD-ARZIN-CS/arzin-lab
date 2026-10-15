@@ -6,10 +6,10 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   bounds, captureRegion, drawItems, drawPaper, emptyBoard, HIGHLIGHT_COLORS, hitStrokes, INK, lassoSelect, newId,
-  PALETTES, PEN_COLORS, parseBoard, SIZES, translateItem, unionBox,
-  type BoardDoc, type Item, type Paper, type Pt, type StrokeItem, type View,
+  PALETTES, PEN_COLORS, parseBoard, resolveSrc, roundPt, setBoardFile, SIZES, translateItem, unionBox,
+  type BoardDoc, type Item, type Paper, type StrokeItem, type View,
 } from '../lib/board'
-import { files } from '../lib/api'
+import { api, files } from '../lib/api'
 import { askAi, boardName, toast, useStore, type AiAction } from '../lib/store'
 import { useTheme } from '../lib/theme'
 
@@ -31,6 +31,9 @@ const AI_ACTIONS: { action: AiAction; icon: typeof PenLine; label: string }[] = 
   { action: 'visual', icon: ScanSearch, label: 'Visualize' },
   { action: 'check', icon: Microscope, label: 'Find the mistake' },
 ]
+
+/** Set while a board is open: lets AI answers place diagrams on it ("Put on board"). */
+export const boardBridge: { addImage: ((blob: Blob) => Promise<void> | void) | null } = { addImage: null }
 
 /** Is the user typing in a text field or the code editor? Then board shortcuts stay out of the way. */
 const isTyping = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, select, .monaco-editor')
@@ -79,27 +82,32 @@ function BoardCanvas({ path }: { path: string }) {
   const pan = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null)
   const pinch = useRef<{ d: number; zoom: number; cx: number; cy: number; vx: number; vy: number } | null>(null)
   const erasing = useRef(false)
+  const lastLasso = useRef<{ x: number; y: number; w: number; h: number } | null>(null) // where AI diagrams go
   const docRef = useRef<BoardDoc | null>(null)
   docRef.current = doc
 
   // ---------- load & autosave ----------
   useEffect(() => {
-    files.read(path).then((t) => {
-      const d = parseBoard(t)
+    setBoardFile(path)
+    api<BoardDoc & { type?: string }>(`/api/board?path=${encodeURIComponent(path)}`).then((raw) => {
+      const d = raw.type === 'excalidraw' ? parseBoard(JSON.stringify(raw)) : { ...emptyBoard(), ...raw, version: 1 as const }
       if (d.view) view.current = d.view
       setDoc(d)
     }, () => setDoc(emptyBoard()))
   }, [path])
 
+  // Saved as segments on the server (see server/src/boards.ts): only the changed segment is rewritten.
+  const save = useCallback(() => {
+    const d = docRef.current
+    if (!d) return Promise.resolve()
+    return api('/api/board', { method: 'PUT', json: { path, doc: { paper: d.paper, view: view.current, items: d.items } } })
+  }, [path])
   const saveTimer = useRef(0)
   const scheduleSave = useCallback(() => {
     clearTimeout(saveTimer.current)
-    saveTimer.current = window.setTimeout(() => {
-      const d = docRef.current
-      if (d) files.write(path, JSON.stringify({ ...d, view: view.current })).catch((e: Error) => toast(`Board not saved: ${e.message}`))
-    }, 700)
-  }, [path])
-  useEffect(() => () => { clearTimeout(saveTimer.current); const d = docRef.current; if (d) files.write(path, JSON.stringify({ ...d, view: view.current })).catch(() => {}) }, [path])
+    saveTimer.current = window.setTimeout(() => save().catch((e: Error) => toast(`Board not saved: ${e.message}`)), 700)
+  }, [save])
+  useEffect(() => () => { clearTimeout(saveTimer.current); save().catch(() => {}) }, [save])
 
   /** Change the items with an undo entry. */
   const commit = useCallback((next: Item[]) => {
@@ -209,7 +217,7 @@ function BoardCanvas({ path }: { path: string }) {
     if (tool === 'pen' || tool === 'highlighter') {
       setSel(null)
       const hl = tool === 'highlighter'
-      live.current.stroke = { id: newId(), kind: tool, color: hl ? hlColor : penColor, size: hl ? SIZES.highlighter[hlSize] : SIZES.pen[penSize], points: [[x, y, pressure]] }
+      live.current.stroke = { id: newId(), kind: tool, color: hl ? hlColor : penColor, size: hl ? SIZES.highlighter[hlSize] : SIZES.pen[penSize], points: [roundPt(x, y, pressure)] }
     } else if (tool === 'eraser') {
       setSel(null)
       erasing.current = true
@@ -271,7 +279,7 @@ function BoardCanvas({ path }: { path: string }) {
     if (s) {
       for (const ev of events) {
         const [x, y] = toWorld(ev.clientX, ev.clientY)
-        s.points.push([x, y, ev.pointerType === 'pen' ? ev.pressure || 0.5 : 0.5] as Pt)
+        s.points.push(roundPt(x, y, ev.pointerType === 'pen' ? ev.pressure || 0.5 : 0.5))
       }
       draw()
     } else if (live.current.lasso) {
@@ -303,6 +311,8 @@ function BoardCanvas({ path }: { path: string }) {
     } else if (lasso && lasso.length > 4) {
       const ids = lassoSelect(d.items, lasso)
       const cap = captureRegion(d.items, lasso)
+      const xs = lasso.map((p) => p[0]), ys = lasso.map((p) => p[1])
+      lastLasso.current = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
       setSel({ ids, poly: lasso, image: cap?.dataUrl ?? null })
     } else if (drag && sel && (drag.dx || drag.dy)) {
       commit(d.items.map((it) => (sel.ids.has(it.id) ? translateItem(it, drag.dx, drag.dy) : it)))
@@ -323,28 +333,50 @@ function BoardCanvas({ path }: { path: string }) {
   }
 
   // ---------- images: paste, drop, insert ----------
-  const addImage = useCallback((file: Blob) => {
-    if (file.size > 6 * 1024 * 1024) return toast('Image too large (max 6 MB)')
-    const reader = new FileReader()
-    reader.onload = () => {
-      const src = String(reader.result)
-      const img = new Image()
-      img.onload = () => {
-        const d = docRef.current!
-        const c = canvas.current!
-        const v = view.current
-        // Fit inside the visible part of the board (80% of it), never upscale.
-        const maxW = Math.min(640, (c.clientWidth / v.zoom) * 0.8), maxH = (c.clientHeight / v.zoom) * 0.8
-        const s = Math.min(1, maxW / img.naturalWidth, maxH / img.naturalHeight)
-        const w = img.naturalWidth * s, h = img.naturalHeight * s
-        const x = v.x + c.clientWidth / v.zoom / 2 - w / 2, y = v.y + c.clientHeight / v.zoom / 2 - h / 2
-        commit([...d.items, { id: newId(), kind: 'image', src, x, y, w, h }])
-        toast('Image added. Use the lasso to circle a problem in it and ask the AI.')
+  /** Add a picture: stored once as boards/<board>.board/assets/<sha>.<ext>, referenced by name.
+   *  `near` places it to the right of that area (e.g. an AI diagram next to what you circled). */
+  const addImage = useCallback(async (file: Blob, opts: { near?: { x: number; y: number; w: number; h: number }; silent?: boolean } = {}) => {
+    if (file.size > 8 * 1024 * 1024) return toast('Image too large (max 8 MB)')
+    const bytes = await file.arrayBuffer()
+    const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('')
+    const ext = ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'png' } as Record<string, string>)[file.type] ?? 'png'
+    const name = `${hash}.${ext}`
+    try {
+      await files.upload(`${path.replace(/\.board\.json$/, '.board')}/assets/${name}`, file)
+    } catch (e) { return toast(`Image not saved: ${(e as Error).message}`) }
+    const img = new Image()
+    img.onload = () => {
+      const d = docRef.current!
+      const c = canvas.current!
+      const v = view.current
+      // Fit inside the visible part of the board (80% of it), never upscale.
+      const maxW = Math.min(opts.near ? 520 : 640, (c.clientWidth / v.zoom) * 0.8), maxH = (c.clientHeight / v.zoom) * 0.8
+      const s = Math.min(1, maxW / img.naturalWidth, maxH / img.naturalHeight)
+      const w = img.naturalWidth * s, h = img.naturalHeight * s
+      const x = opts.near ? opts.near.x + opts.near.w + 40 : v.x + c.clientWidth / v.zoom / 2 - w / 2
+      const y = opts.near ? opts.near.y : v.y + c.clientHeight / v.zoom / 2 - h / 2
+      commit([...d.items, { id: newId(), kind: 'image', src: `asset:${name}`, x, y, w, h }])
+      if (!opts.silent) toast('Image added. Use the lasso to circle a problem in it and ask the AI.')
+      // If it landed off-screen (e.g. a diagram next to what you circled), glide the view to show it.
+      const vw = c.clientWidth / v.zoom, vh = c.clientHeight / v.zoom
+      if (x < v.x || y < v.y || x + w > v.x + vw || y + h > v.y + vh) {
+        const target = opts.near ? { x: opts.near.x - 30, y: Math.min(opts.near.y, y) - 30 } : { x: x - 30, y: y - 30 }
+        // Fit both the circled area and the new picture when possible.
+        const span = opts.near ? x + w - opts.near.x + 60 : w + 60
+        const zoom = Math.min(v.zoom, Math.max(0.3, (c.clientWidth - 40) / span))
+        view.current = { zoom, ...target }
+        draw()
+        scheduleSave()
       }
-      img.src = src
     }
-    reader.readAsDataURL(file)
-  }, [commit])
+    img.src = resolveSrc(`asset:${name}`)
+  }, [commit, path, draw, scheduleSave])
+
+  // Let other parts of the app (AI diagrams) put pictures on this board.
+  useEffect(() => {
+    boardBridge.addImage = (blob) => addImage(blob, { near: lastLasso.current ?? undefined, silent: true })
+    return () => { boardBridge.addImage = null }
+  }, [addImage])
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {

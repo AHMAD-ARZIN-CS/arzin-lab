@@ -2,7 +2,7 @@
 // that ties replies to the request (a run, a terminal, a trace...).
 import { StringDecoder } from 'node:string_decoder'
 import type { WebSocket } from 'ws'
-import { ask, buildPrompt, type AiContext, type AiHandle } from './ai.js'
+import { ask, buildPrompt, DIAGRAM_GUIDE, type AiContext, type AiHandle } from './ai.js'
 import { runTests, startRun, testsFor, traceFile, writeScratch, type RunControl, type TestCase } from './runner.js'
 import { execStart, getStatus, onStatus } from './sandbox.js'
 import { remove } from './files.js'
@@ -100,8 +100,12 @@ export function handleSocket(ws: WebSocket) {
     async ai(m) {
       const ctx = m.context as AiContext & { lectureSlug?: string }
       if (ctx.lectureSlug && !m.resume) ctx.lecture = await lectureText(ctx.lectureSlug)
-      const prompt = m.resume ? String(ctx.question ?? 'Go deeper.') + (ctx.stepState ? `\n\nCurrent execution state:\n${ctx.stepState}` : '') : buildPrompt(ctx)
-      ais.set(m.id, ask(prompt, { resume: m.resume as string | undefined, images: m.resume ? undefined : ctx.images }, {
+      const want = (ctx as { wantDiagram?: boolean }).wantDiagram ? `\n\n${DIAGRAM_GUIDE}` : ''
+      const prompt = m.resume
+        ? String(ctx.question ?? 'Go deeper.') + (ctx.stepState ? `\n\nCurrent execution state:\n${ctx.stepState}` : '') + want
+        : buildPrompt(ctx) + want
+      const system = ctx.action === 'flowchart' ? 'You draw precise Mermaid diagrams of programs. Output only the requested mermaid block.' : undefined
+      ais.set(m.id, ask(prompt, { resume: m.resume as string | undefined, images: m.resume ? undefined : ctx.images, system }, {
         delta: (text) => send({ t: 'ai-delta', id: m.id, text }),
         done: (r) => { ais.delete(m.id); send({ t: 'ai-done', id: m.id, ...r }) },
       }))

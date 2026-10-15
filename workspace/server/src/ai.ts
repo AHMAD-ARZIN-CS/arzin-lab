@@ -26,7 +26,7 @@ Rules:
 - Do not write the full solution to a practice problem unless the request explicitly asks for a full solution.
 - End with a line "**Go deeper:**" followed by 2-3 short follow-up topics as a bullet list (omit for hints).`
 
-export type AiAction = 'explain' | 'visual' | 'error' | 'example' | 'hint' | 'compare' | 'fix' | 'optimize' | 'ask' | 'next' | 'solve' | 'check' | 'summarize'
+export type AiAction = 'explain' | 'visual' | 'error' | 'example' | 'hint' | 'compare' | 'fix' | 'optimize' | 'ask' | 'next' | 'solve' | 'check' | 'summarize' | 'flowchart'
 
 export interface AiImage { mediaType: string; data: string }
 
@@ -53,7 +53,18 @@ export interface AiContext {
 const BOARD_INTRO = `The learner circled this region of their whiteboard: handwriting, a sketch, or a pasted screenshot of a problem.
 Start with a short "**What I see:**" block transcribing it (math in plain text or LaTeX-ish notation, code in a code block), so they can confirm you read the handwriting correctly. If part is illegible, say which part.`
 
-const VISUAL_SVG = `When a picture helps, include ONE diagram as a fenced \`\`\`svg block: a single self-contained <svg> with a viewBox (at most 640x400), no scripts, no external images, no fonts beyond sans-serif/monospace. Use stroke="currentColor"/fill="currentColor" for lines and text so it reads in light and dark mode; accent colors allowed: #3b82f6 #22c55e #f59e0b #ef4444 #a855f7. Label axes and key points.`
+/** How to draw: the workspace renders these fenced blocks as real graphics. */
+export const DIAGRAM_GUIDE = `DIAGRAMS: the learner's app draws these fenced blocks as real graphics. Prefer them over ASCII art.
+1. Graphs of functions → a \`\`\`plot block with JSON (no comments):
+   {"title":"...","x":[xmin,xmax],"y":[ymin,ymax] (optional),"functions":[{"fn":"x^2 - 2*x","label":"f(x)"}],
+    "points":[{"x":1,"y":-1,"label":"vertex (1,-1)"}],"vlines":[{"x":2,"label":"x = 2"}],
+    "areas":[{"fn":"x^2","from":0,"to":1,"label":"area"}],"xlabel":"x","ylabel":"y"}
+   Formulas use x only, mathjs syntax: + - * / ^, sqrt, sin, cos, tan, exp, log (natural), abs, pi, e. Pick a window that shows the interesting part; mark roots, extrema, intersections as points.
+2. Processes, algorithms, code flow, recursion trees, data structures, state machines → a \`\`\`mermaid block
+   (flowchart TD / LR, graph, stateDiagram-v2, sequenceDiagram, classDiagram). Keep labels short; quote labels containing symbols: A["x = x + 1"].
+3. Only if neither fits (e.g. geometry), a \`\`\`svg block: one <svg> with a viewBox ≤ 640x400, no scripts/images, colors via currentColor plus #3b82f6 #22c55e #f59e0b #ef4444 #a855f7.
+Use at most two diagrams, each followed by one sentence saying what to notice.`
+const VISUAL_SVG = DIAGRAM_GUIDE
 
 const TASKS: Record<AiAction, (c: AiContext) => string> = {
   explain: (c) => c.images?.length
@@ -64,8 +75,12 @@ const TASKS: Record<AiAction, (c: AiContext) => string> = {
 3. **How it behaves when this program runs** (use real values from the execution state if given).
 Keep it under ~300 words.`,
   visual: (c) => c.images?.length
-    ? `VISUALIZE this. Make the idea visible: graph functions, draw the geometry, show how quantities change, or diagram the data structure/algorithm. ${VISUAL_SVG} Then explain in a few bullets what the picture shows. If it's code, also give a small runnable program in one fenced block they can open and step through in the workspace visualizer.`
-    : `Explain what the SELECTED code does at runtime, step by step, as a trace: show how the relevant variables/memory change, using a small table or ASCII diagram. Use the execution state if given. The learner can also see the real recorded trace in the visualizer — point out what to watch there.`,
+    ? `VISUALIZE this. Your answer MUST start (right after "What I see") with a diagram: a \`\`\`plot for anything with functions/equations/graphs, otherwise a \`\`\`mermaid diagram. The first diagram is placed on the learner's whiteboard next to what they circled, so make it clean, labeled and self-explanatory. ${DIAGRAM_GUIDE} Then explain in a few bullets what the picture shows.`
+    : `Explain what the SELECTED code does at runtime. Include a \`\`\`mermaid diagram of it (a flowchart of the control flow, or boxes-and-arrows for memory/pointers/data structures), then a short step-by-step trace table of how the key variables change. Use the execution state if given. ${DIAGRAM_GUIDE}`,
+  flowchart: () => `Draw the control flow of the WHOLE program as ONE mermaid flowchart. Output ONLY the \`\`\`mermaid block, nothing else.
+Rules: start with "flowchart TD". Node ids MUST be L<line number> of the source line the node represents (e.g. L7), plus Start/End.
+Use rectangles for statements L7["7: total += nums[i]"], diamonds for conditions L9{"9: i < n?"}, and label branch edges -->|yes| / -->|no|.
+Show loops as edges going back. Merge trivial consecutive lines into one node (use the first line's number). Show function calls as their own subgraph only if short. Keep label text short and quote every label.`,
   error: () => `Explain why this ERROR happened. Structure:
 1. **What the message means** in plain English.
 2. **The root cause in this code** (point to the exact line/expression).

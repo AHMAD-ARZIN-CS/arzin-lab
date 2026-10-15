@@ -60,17 +60,27 @@ function strokePath(s: StrokeItem): Path2D {
   return p
 }
 
+// Pictures are stored as files next to the board and referenced as "asset:<name>".
+let assetDir = ''
+/** Set by the board editor: boards/notes.board.json → its pictures are in boards/notes.board/assets/. */
+export function setBoardFile(boardPath: string) { assetDir = boardPath.replace(/\.board\.json$/, '.board') + '/assets' }
+export const resolveSrc = (src: string) => (src.startsWith('asset:') ? `/asset?path=${encodeURIComponent(`${assetDir}/${src.slice(6)}`)}` : src)
+
 const imageCache = new Map<string, HTMLImageElement>()
 export function loadImage(src: string, onLoad: () => void): HTMLImageElement {
-  let img = imageCache.get(src)
+  const url = resolveSrc(src)
+  let img = imageCache.get(url)
   if (!img) {
     img = new Image()
     img.onload = onLoad
-    img.src = src
-    imageCache.set(src, img)
+    img.src = url
+    imageCache.set(url, img)
   }
   return img
 }
+
+/** Round to 0.1 px (pressure to 0.01): halves the size of saved strokes with no visible difference. */
+export const roundPt = (x: number, y: number, p: number): Pt => [Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(p * 100) / 100]
 
 // ---------- drawing ----------
 

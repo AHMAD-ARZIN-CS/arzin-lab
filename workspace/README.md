@@ -90,6 +90,28 @@ Boards are notebooks saved as `my-code/boards/<name>.board.json`.
 - **Circle anything with the lasso** (L), then use **Ask AI → Solve · Explain · Visualize · Find the mistake · Ask…**. Exactly what's inside the lasso is sent as an image, and the answer appears in Explain with a thumbnail of what the AI saw. The AI first writes down what it read, so you can catch handwriting it misread. *Visualize* answers can include diagrams (SVG, sanitized). The lasso also moves or deletes what it caught.
 - Whiteboards from the old Excalidraw panel were imported automatically, and the original files were left untouched.
 
+## Diagrams, everywhere
+
+- **In answers:** the AI draws real graphics instead of code. ` ```plot ` blocks become function graphs, drawn by our own plotter with formulas parsed safely by mathjs, showing roots, extrema, shaded areas and labels. ` ```mermaid ` blocks become flowcharts, trees, state machines and call diagrams. Every diagram has **Put on board**.
+- **Board → Visualize:** the first diagram is placed on the board next to what you circled, and the view moves to show it.
+- **Explain with a diagram:** a button on every answer asks for a diagram-based explanation.
+- **Code visualizer views:**
+  - **Memory**: the stack, heap, pointers and arrays, with an **arrays as bars** option for sorting and sums.
+  - **Call tree**: grows as you step, and shows each call's arguments and return value.
+  - **Timeline**: a small chart per number variable across the whole run.
+  - **Flowchart**: drawn by the AI from your code; the box for the running line lights up as you step.
+  Everything except the flowchart's layout comes from the real recorded run.
+
+## Board storage
+
+Boards are stored like a tiny database, not one growing file:
+```
+boards/notes.board.json            small manifest: paper, view, list of segments
+boards/notes.board/seg-0001.json   up to 300 items (or ~2 MB) each
+boards/notes.board/assets/<sha>.png pictures, stored once and named by content hash
+```
+New strokes are appended to the last segment, so a save rewrites only that segment, and full segments are never touched again. This is the same idea as database pages and log segments. Pictures stay out of the JSON, and the same screenshot pasted twice is stored once. Old single-file boards still open and are converted on their next save. Check it with `node scripts/board-storage-test.mjs`.
+
 ## Problem library
 
 **Practice → Library** has 40 C++ problems in a learning order: Basics → Arrays & vectors → Strings → Functions & recursion → Pointers & linked lists → Stacks & queues → Hashing → Sorting & searching → Backtracking → Dynamic programming → Trees → Graphs.
