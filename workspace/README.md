@@ -86,6 +86,9 @@ To add a language, install it in `sandbox/Dockerfile` and add an entry in `serve
 Boards are notebooks saved as `my-code/boards/<name>.board.json`.
 
 - **Tools**: pen with pressure (a stylus works; with a pen, your palm or finger pans instead of drawing), highlighter (drawn under the ink), eraser, lasso, text, and pan (or hold Space). Ctrl+scroll or pinch zooms. Paper can be dots, grid, lines or plain. Undo and redo work.
+- **Three pens**: *Fine* (even width, follows your hand exactly; best for small writing and math), *Ballpoint* (a little pressure and smoothing; the default) and *Smooth* (fountain-pen style, very smooth). Your choice is remembered. Four thicknesses. The first touch of a stylus no longer leaves a fat dot. The eraser end of a stylus erases.
+- **Text you can change later**: with the text tool, tap existing text to edit it. Or tap it with the lasso to get *Edit text*, smaller/bigger and colors, or drag a corner to resize. Double-click text (lasso, text or pan tool) to edit it. Clearing all the words deletes it.
+- **Stray stylus taps**: a stylus tap on the toolbar within 0.4 s of finishing a stroke is ignored, so writing near the top edge doesn't switch tools.
 - **Paste or drop a screenshot** of a textbook or LeetCode problem onto the board.
 - **Circle anything with the lasso** (L), then use **Ask AI → Solve · Explain · Visualize · Find the mistake · Ask…**. Exactly what's inside the lasso is sent as an image, and the answer appears in Explain with a thumbnail of what the AI saw. The AI first writes down what it read, so you can catch handwriting it misread. *Visualize* answers can include diagrams (SVG, sanitized). The lasso also moves or deletes what it caught.
 - Whiteboards from the old Excalidraw panel were imported automatically, and the original files were left untouched.
@@ -96,7 +99,8 @@ Boards are notebooks saved as `my-code/boards/<name>.board.json`.
 - **Graphs are live, like Desmos:** drag to pan, scroll to zoom, hover to read values. **Trace** puts a dot on the curve with its x, y and slope ("increasing / decreasing"), **Play** walks it along the curve, and **Tangent** draws the tangent line. Graphs with parameters get sliders (a, b, h, k…) that you can drag or animate.
 - **Animate / make interactive:** on any graph, asks the AI to turn constants into sliders and tell you what to try.
 - **Board → Visualize:** the first diagram is placed on the board next to what you circled, in a free spot that doesn't cover your writing, and the view moves to show it. It is selected right away. Drag it to move it, and drag a corner to resize it.
-- **Open live graph:** tap a graph on the board with the lasso, then choose *Open live graph* to explore it again. *Put on board* updates the picture with your current view and slider values.
+- **Textbook notation in graphs:** labels are typeset from the formula itself, with italic variables and raised exponents: `sin(x)*x` shows as *x* sin *x*, `exp(-x^2/2)` as *e* with −*x*²/2 raised, `log(x)` as ln *x*, `sqrt(x+1)` as √(*x* + 1).
+- **Open live graph:** tap a graph on the board with the lasso, then choose *Open live graph* to explore it again (or just double-click the graph). *Put on board* updates the picture with your current view and slider values.
 - **Explain with a diagram:** a button on every answer asks for a diagram-based explanation.
 - **Code visualizer views:**
   - **Memory**: the stack, heap, pointers and arrays, with an **arrays as bars** option for sorting and sums.

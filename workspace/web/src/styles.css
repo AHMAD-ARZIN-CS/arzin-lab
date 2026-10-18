@@ -586,7 +586,8 @@ button.st-item:hover { background: rgba(255, 255, 255, 0.12); }
 .notes-preview { flex: 1; overflow: auto; padding: 4px 14px; }
 
 /* ================= whiteboard ================= */
-.board { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
+.board { position: absolute; inset: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+.board textarea, .board input { user-select: text; -webkit-user-select: text; }
 .board-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
 .board-canvas.tool-hand { cursor: grab; }
 .board-canvas.tool-hand:active { cursor: grabbing; }
@@ -607,6 +608,10 @@ button.st-item:hover { background: rgba(255, 255, 255, 0.12); }
 .tool:disabled { opacity: 0.35; cursor: default; }
 .tool.size.on { background: var(--surface-3); color: var(--text); }
 .size-dot { display: block; border-radius: 50%; background: currentColor; }
+.size-a { font-weight: 600; line-height: 1; }
+.tool.pen-type { width: auto; padding: 0 9px; font-size: 12px; font-weight: 500; }
+.tool.pen-type.on { background: var(--accent-soft); color: var(--accent); }
+.swatch.small { width: 16px; height: 16px; flex-shrink: 0; }
 .colors { gap: 5px; padding: 0 4px; }
 .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--border-strong); cursor: pointer; padding: 0; transition: transform 0.12s var(--ease), box-shadow 0.12s; }
 .swatch:hover { transform: scale(1.1); }
@@ -615,7 +620,7 @@ button.st-item:hover { background: rgba(255, 255, 255, 0.12); }
 .board-title { font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-info select { padding: 2px 6px; height: 26px; font-size: 12px; }
 .board-hint { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); z-index: 4; padding: 5px 12px; font-size: 12px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); pointer-events: none; white-space: nowrap; }
-.board-text { position: absolute; z-index: 6; min-width: 160px; min-height: 40px; background: transparent; border: 1px dashed var(--accent); box-shadow: none; font-family: var(--sans); line-height: 1.3; padding: 0 2px; }
+.board-text { position: absolute; z-index: 6; min-width: 160px; min-height: 40px; background: transparent; border: 1px dashed var(--accent); box-shadow: none; font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.3; padding: 0 2px; resize: none; overflow: hidden; white-space: pre; field-sizing: content; }
 .board-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; height: 100%; padding: 40px; text-align: center; color: var(--muted); }
 .board-empty h2 { margin: 4px 0 0; color: var(--text); font-weight: 600; }
 .board-empty p { max-width: 460px; margin: 0; }

@@ -54,7 +54,10 @@ export function prettyMath(s: string): string {
     .replace(/\^\{([^}]+)\}/g, (m, e) => supOf(e) ?? m)
     .replace(/\^\(([^)]+)\)/g, (m, e) => supOf(`(${e})`) ?? m)
     .replace(/\^(-?\w+)/g, (m, e) => supOf(e) ?? m)
+    .replace(/\b(sin|cos|tan|ln|log)\(([a-zθ])\)/g, '$1 $2') // sin(x) → sin x
+    .replace(/(\d)\s*[*·]\s*([a-zπθ])/g, '$1$2') // 2*x → 2x
     .replace(/\s*\*\s*/g, '·')
+    .replace(/\bsqrt\(([a-z0-9])\)/g, '√$1')
     .replace(/\bsqrt\b/g, '√')
     .replace(/\bpi\b/g, 'π')
     .replace(/\btheta\b/g, 'θ')

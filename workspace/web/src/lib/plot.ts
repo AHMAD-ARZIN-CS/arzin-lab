@@ -1,6 +1,6 @@
 // The graphing engine behind ```plot blocks (static pictures and the interactive grapher).
 // Formulas are parsed by mathjs (never eval'd) with its dangerous functions disabled.
-import { prettyMath } from './math'
+import { labelSvg, setParser } from './mathfmt'
 
 export interface PlotSlider { name: string; min: number; max: number; value?: number; step?: number; label?: string }
 export interface PlotSpec {
@@ -30,6 +30,7 @@ export function getCompiler() {
   compilerPromise ??= import('mathjs').then(({ create, all }) => {
     const math = create(all)
     const compile = math.compile
+    setParser(math.parse) // for typesetting labels (parse only builds a tree, it never evaluates)
     const off = (n: string) => () => { throw new Error(`${n} is disabled`) }
     math.import({ import: off('import'), createUnit: off('createUnit'), evaluate: off('evaluate'), parse: off('parse'), simplify: off('simplify'), derivative: off('derivative') }, { override: true })
     return (src: string): Fn => {
@@ -77,7 +78,11 @@ function ticks(lo: number, hi: number, count = 6) {
   return out
 }
 
-const esc = (s: string) => prettyMath(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
+/** Labels in textbook notation (escaped SVG tspans). */
+const esc = (s: string, fontSize: number) => labelSvg(s, fontSize)
+/** Legend text: a bare name like "f(x)" gets its formula: f(x) = x sin x. */
+const legendOf = (f: { fn: string; label?: string }) =>
+  !f.label ? `y = ${f.fn}` : /^\s*[A-Za-z]\w*(\(\s*[a-z]\s*\))?\s*$/.test(f.label) ? `${f.label.trim()} = ${f.fn}` : f.label
 
 export interface DrawOptions {
   view: View
@@ -140,8 +145,8 @@ export function plotSvg(spec: PlotSpec, fns: Fn[], areaFns: Fn[], o: DrawOptions
     const color = spec_f.color ?? COLORS[i % COLORS.length]
     g.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round"${spec_f.dashed ? ' stroke-dasharray="6 5"' : ''}/>`)
   })
-  for (const v of spec.vlines ?? []) g.push(`<line x1="${sx(v.x)}" y1="${T}" x2="${sx(v.x)}" y2="${H - B}" stroke="#f59e0b" stroke-dasharray="5 4" stroke-width="1.5"/>${v.label ? `<text x="${sx(v.x) + 4}" y="${T + 12}" font-size="11" fill="#f59e0b">${esc(v.label)}</text>` : ''}`)
-  for (const pt of spec.points ?? []) g.push(`<circle cx="${sx(pt.x)}" cy="${sy(pt.y)}" r="4.5" fill="${pt.color ?? '#ef4444'}"/>${pt.label ? `<text x="${sx(pt.x) + 8}" y="${sy(pt.y) - 8}" font-size="12" fill="currentColor">${esc(pt.label)}</text>` : ''}`)
+  for (const v of spec.vlines ?? []) g.push(`<line x1="${sx(v.x)}" y1="${T}" x2="${sx(v.x)}" y2="${H - B}" stroke="#f59e0b" stroke-dasharray="5 4" stroke-width="1.5"/>${v.label ? `<text x="${sx(v.x) + 4}" y="${T + 12}" font-size="11" fill="#f59e0b">${esc(v.label, 11)}</text>` : ''}`)
+  for (const pt of spec.points ?? []) g.push(`<circle cx="${sx(pt.x)}" cy="${sy(pt.y)}" r="4.5" fill="${pt.color ?? '#ef4444'}"/>${pt.label ? `<text x="${sx(pt.x) + 8}" y="${sy(pt.y) - 8}" font-size="12" fill="currentColor">${esc(pt.label, 12)}</text>` : ''}`)
 
   // Hover guide.
   if (o.hoverX != null && o.traceX == null) {
@@ -170,10 +175,10 @@ export function plotSvg(spec: PlotSpec, fns: Fn[], areaFns: Fn[], o: DrawOptions
   }
   parts.push(`<g clip-path="url(#${clip})">${g.join('')}</g>`)
 
-  ;(spec.functions ?? []).forEach((f, i) => parts.push(`<rect x="${L + 10}" y="${T + 8 + i * 18}" width="14" height="3" fill="${f.color ?? COLORS[i % COLORS.length]}"/><text x="${L + 30}" y="${T + 13 + i * 18}" font-size="12" fill="currentColor">${esc(f.label ?? `y = ${f.fn}`)}</text>`))
-  if (spec.title) parts.push(`<text x="${W / 2}" y="20" font-size="14" font-weight="600" text-anchor="middle" fill="currentColor">${esc(spec.title)}</text>`)
-  if (spec.xlabel) parts.push(`<text x="${W - R}" y="${H - 6}" font-size="11" text-anchor="end" fill="currentColor" fill-opacity="0.7">${esc(spec.xlabel)}</text>`)
-  if (spec.ylabel) parts.push(`<text x="12" y="${T + 4}" font-size="11" fill="currentColor" fill-opacity="0.7">${esc(spec.ylabel)}</text>`)
+  ;(spec.functions ?? []).forEach((f, i) => parts.push(`<rect x="${L + 10}" y="${T + 8 + i * 18}" width="14" height="3" fill="${f.color ?? COLORS[i % COLORS.length]}"/><text x="${L + 30}" y="${T + 13 + i * 18}" font-size="13" fill="currentColor" paint-order="stroke" stroke="var(--plot-bg, white)" stroke-width="3" stroke-linejoin="round">${esc(legendOf(f), 13)}</text>`))
+  if (spec.title) parts.push(`<text x="${W / 2}" y="20" font-size="14" font-weight="600" text-anchor="middle" fill="currentColor">${esc(spec.title, 14)}</text>`)
+  if (spec.xlabel) parts.push(`<text x="${W - R}" y="${H - 6}" font-size="11" text-anchor="end" fill="currentColor" fill-opacity="0.7">${esc(spec.xlabel, 11)}</text>`)
+  if (spec.ylabel) parts.push(`<text x="12" y="${T + 4}" font-size="11" fill="currentColor" fill-opacity="0.7">${esc(spec.ylabel, 11)}</text>`)
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="ui-sans-serif, system-ui, sans-serif">${parts.join('')}</svg>`
 }
 

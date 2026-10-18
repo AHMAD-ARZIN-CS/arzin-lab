@@ -3,7 +3,18 @@
 import { getStroke } from 'perfect-freehand'
 
 export type Pt = [number, number, number] // x, y, pressure
-export interface StrokeItem { id: string; kind: 'pen' | 'highlighter'; color: string; size: number; points: Pt[] }
+export interface StrokeItem {
+  id: string; kind: 'pen' | 'highlighter'; color: string; size: number; points: Pt[]
+  /** Pen type. Strokes saved before pen types existed have none and keep their old look. */
+  pen?: PenStyle
+}
+export type PenStyle = 'fine' | 'ballpoint' | 'smooth'
+/** How each pen feels. `scale` turns the size setting into a width; `pressure` = how much pen pressure changes it. */
+export const PEN_STYLES: Record<PenStyle, { label: string; hint: string; scale: number; pressure: number; smoothing: number; streamline: number }> = {
+  fine: { label: 'Fine', hint: 'Fine liner: even width, follows your hand exactly (best for small writing and math)', scale: 1.15, pressure: 0, smoothing: 0.25, streamline: 0.12 },
+  ballpoint: { label: 'Ballpoint', hint: 'Ballpoint: a little pressure and smoothing', scale: 1.4, pressure: 0.25, smoothing: 0.45, streamline: 0.3 },
+  smooth: { label: 'Smooth', hint: 'Fountain pen: very smooth lines that change with pressure', scale: 1.7, pressure: 0.5, smoothing: 0.7, streamline: 0.6 },
+}
 export interface ImageItem {
   id: string; kind: 'image'; src: string; x: number; y: number; w: number; h: number
   /** For graphs: the formulas behind the picture, so it can be reopened as a live graph. */
@@ -22,7 +33,7 @@ export const emptyBoard = (): BoardDoc => ({ version: 1, paper: 'dots', items: [
 export const INK = 'ink'
 export const PEN_COLORS = [INK, '#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c']
 export const HIGHLIGHT_COLORS = ['#facc15', '#4ade80', '#60a5fa', '#f472b6']
-export const SIZES = { pen: [2, 3.5, 6], highlighter: [14, 22, 32] }
+export const SIZES = { pen: [1.5, 2.5, 4, 6], highlighter: [14, 22, 32], text: [16, 22, 30, 44] }
 
 export interface Palette { paper: string; dot: string; ink: string; selection: string }
 export const PALETTES: Record<'light' | 'dark', Palette> = {
@@ -41,16 +52,7 @@ function strokePath(s: StrokeItem): Path2D {
   const hit = pathCache.get(s)
   if (hit && hit.n === s.points.length) return hit.path
   let p: Path2D
-  const hasPressure = s.points.some((pt) => pt[2] !== 0.5)
-  const outline = getStroke(s.points, {
-    size: s.size * (s.kind === 'highlighter' ? 1 : 2.2),
-    thinning: s.kind === 'highlighter' ? 0 : 0.55,
-    smoothing: 0.5,
-    streamline: 0.45,
-    simulatePressure: !hasPressure && s.kind === 'pen',
-    start: { taper: s.kind === 'pen' && s.points.length > 3 ? 2 : 0, cap: true },
-    end: { taper: 0, cap: true },
-  })
+  const outline = s.kind === 'pen' && s.pen ? penOutline(s, s.pen) : legacyOutline(s)
   p = new Path2D()
   if (outline.length) {
     p.moveTo(outline[0][0], outline[0][1])
@@ -62,6 +64,41 @@ function strokePath(s: StrokeItem): Path2D {
   }
   pathCache.set(s, { n: s.points.length, path: p })
   return p
+}
+
+function penOutline(s: StrokeItem, style: PenStyle) {
+  const st = PEN_STYLES[style]
+  // Pen pressure, softened: the first touch of a stylus often reports a spike, which made a fat
+  // dot at the start of every stroke. Ignore the first sample and squeeze the range toward the middle.
+  const pts = s.points.map(([x, y, pr], i) => {
+    const raw = i === 0 && s.points.length > 1 ? s.points[1][2] : pr
+    return [x, y, 0.5 + (Math.min(1, Math.max(0, raw)) - 0.5) * 0.6] as Pt
+  })
+  return getStroke(pts, {
+    size: s.size * st.scale,
+    thinning: st.pressure,
+    smoothing: st.smoothing,
+    streamline: st.streamline,
+    simulatePressure: false,
+    easing: (t) => t,
+    start: { taper: 0, cap: true },
+    end: { taper: 0, cap: true },
+    last: true,
+  })
+}
+
+/** The original pen (strokes from before pen types), unchanged so old notes look the same. */
+function legacyOutline(s: StrokeItem) {
+  const hasPressure = s.points.some((pt) => pt[2] !== 0.5)
+  return getStroke(s.points, {
+    size: s.size * (s.kind === 'highlighter' ? 1 : 2.2),
+    thinning: s.kind === 'highlighter' ? 0 : 0.55,
+    smoothing: 0.5,
+    streamline: 0.45,
+    simulatePressure: !hasPressure && s.kind === 'pen',
+    start: { taper: s.kind === 'pen' && s.points.length > 3 ? 2 : 0, cap: true },
+    end: { taper: 0, cap: true },
+  })
 }
 
 // Pictures are stored as files next to the board and referenced as "asset:<name>".
@@ -122,7 +159,7 @@ export function drawItem(ctx: CanvasRenderingContext2D, it: Item, pal: Palette, 
     else { ctx.strokeStyle = pal.dot; ctx.strokeRect(it.x, it.y, it.w, it.h) }
   } else if (it.kind === 'text') {
     ctx.fillStyle = colorOf(it.color, pal)
-    ctx.font = `${it.size}px ui-sans-serif, system-ui, sans-serif`
+    ctx.font = `${it.size}px ${TEXT_FONT}`
     ctx.textBaseline = 'top'
     it.text.split('\n').forEach((line, i) => ctx.fillText(line, it.x, it.y + i * it.size * 1.3))
   }
@@ -139,11 +176,21 @@ export function drawItems(ctx: CanvasRenderingContext2D, items: Item[], pal: Pal
 
 export interface Box { x: number; y: number; w: number; h: number }
 
+export const TEXT_FONT = 'ui-sans-serif, system-ui, sans-serif'
+let measureCtx: CanvasRenderingContext2D | null = null
+/** Real width of a line of board text. */
+function textWidth(line: string, size: number) {
+  measureCtx ??= document.createElement('canvas').getContext('2d')
+  if (!measureCtx) return line.length * size * 0.55
+  measureCtx.font = `${size}px ${TEXT_FONT}`
+  return measureCtx.measureText(line).width
+}
+
 export function bounds(it: Item): Box {
   if (it.kind === 'image') return { x: it.x, y: it.y, w: it.w, h: it.h }
   if (it.kind === 'text') {
     const lines = it.text.split('\n')
-    return { x: it.x, y: it.y, w: Math.max(...lines.map((l) => l.length)) * it.size * 0.55, h: lines.length * it.size * 1.3 }
+    return { x: it.x, y: it.y, w: Math.max(it.size, ...lines.map((l) => textWidth(l, it.size))), h: lines.length * it.size * 1.3 }
   }
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
   for (const [x, y] of it.points) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y) }

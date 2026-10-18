@@ -70,8 +70,10 @@ export const DIAGRAM_GUIDE = `DIAGRAMS: the learner's app draws these fenced blo
    Pick a window that shows the interesting part; mark roots, extrema, intersections as points.
 2. Processes, algorithms, code flow, recursion trees, data structures, state machines → a \`\`\`mermaid block
    (flowchart TD / LR, graph, stateDiagram-v2, sequenceDiagram, classDiagram). Keep labels short; quote every label: A["x = x + 1"].
-   Math in mermaid labels and plot labels can't be typeset, so write it with Unicode the way a textbook shows it:
-   eˣ, x², x³, √x, π, θ, ∫, Σ, ·, ≤, ≥, ≠, →, ∞ (e.g. A["I = eˣ sin x − ∫ eˣ cos x dx"]). Never e^x, x^2 or 4*x in labels, and no LaTeX there.
+   Plot labels: the app typesets formulas itself (italic variables, raised exponents, x sin x not sin(x)·x).
+   So label a curve with just its name ("f(x)", "g(x)") or "y = " plus the formula in the same syntax as "fn"; don't hand-write Unicode formulas there.
+   Mermaid labels can't be typeset, so write math there with Unicode the way a textbook shows it:
+   eˣ, x², x³, √x, π, θ, ∫, Σ, ≤, ≥, ≠, →, ∞, 2x not 2·x, x sin x not sin(x)·x (e.g. A["I = eˣ sin x − ∫ eˣ cos x dx"]). Never e^x, x^2 or 4*x in labels, and no LaTeX there.
 3. Only if neither fits (e.g. geometry), a \`\`\`svg block: one <svg> with a viewBox ≤ 640x400, no scripts/images, colors via currentColor plus #3b82f6 #22c55e #f59e0b #ef4444 #a855f7.
 Use at most two diagrams, each followed by one sentence saying what to notice.`
 const VISUAL_SVG = DIAGRAM_GUIDE

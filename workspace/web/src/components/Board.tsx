@@ -1,6 +1,6 @@
 // The whiteboard: write by hand, paste problems, circle anything and ask the AI about it.
 import {
-  Eraser, Hand, Highlighter, ImagePlus, Lasso, Lightbulb, LineChart, Microscope, PenLine, Redo2, ScanSearch,
+  AArrowDown, AArrowUp, Eraser, Hand, Highlighter, ImagePlus, Lasso, Lightbulb, LineChart, Microscope, PenLine, Redo2, ScanSearch,
   Sparkles, Trash2, Type, Undo2, Wand2, X,
 } from 'lucide-react'
 import { svgToPng } from '../lib/diagrams'
@@ -10,8 +10,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   bounds, captureRegion, drawItems, drawPaper, emptyBoard, HIGHLIGHT_COLORS, hitStrokes, INK, lassoSelect, newId,
   PALETTES, PEN_COLORS, parseBoard, resolveSrc, roundPt, setBoardFile, SIZES, translateItem, unionBox,
-  freeSpot, itemAt, scaleItem,
-  type BoardDoc, type ImageItem, type Item, type Paper, type StrokeItem, type View,
+  freeSpot, itemAt, scaleItem, PEN_STYLES,
+  type BoardDoc, type ImageItem, type Item, type Paper, type PenStyle, type StrokeItem, type TextItem, type View,
 } from '../lib/board'
 import { api, files } from '../lib/api'
 import { askAi, boardName, deletedBoards, toast, useStore, type AiAction } from '../lib/store'
@@ -69,10 +69,23 @@ function BoardCanvas({ path }: { path: string }) {
   const [hlColor, setHlColor] = useState(HIGHLIGHT_COLORS[0])
   const [penSize, setPenSize] = useState(1)
   const [hlSize, setHlSize] = useState(1)
+  const [textSize, setTextSize] = useState(1)
+  const [penStyle, setPenStyleState] = useState<PenStyle>(() => {
+    try { const v = localStorage.getItem('board.pen'); if (v && v in PEN_STYLES) return v as PenStyle } catch { /* storage blocked */ }
+    return 'ballpoint'
+  })
+  const setPenStyle = (v: PenStyle) => { setPenStyleState(v); try { localStorage.setItem('board.pen', v) } catch { /* storage blocked */ } }
   const [sel, setSel] = useState<Selection | null>(null)
   const [asking, setAsking] = useState(false)
   const [question, setQuestion] = useState('')
-  const [textEdit, setTextEdit] = useState<{ x: number; y: number; value: string } | null>(null)
+  /** Text being typed: a new one, or an existing one (id) being edited. */
+  const [textEdit, setTextEdit] = useState<{ x: number; y: number; value: string; size: number; color: string; id?: string } | null>(null)
+  const editingId = useRef<string | undefined>(undefined)
+  editingId.current = textEdit?.id
+  const textRef = useRef(textEdit) // the open text box, so a late blur can't commit it twice
+  textRef.current = textEdit
+  const lastStrokeEnd = useRef(0)
+  const blockClick = useRef(false)
   const [, force] = useState(0)
 
   // Mutable interaction state (kept out of React to stay smooth while drawing).
@@ -150,7 +163,8 @@ function BoardCanvas({ path }: { path: string }) {
       const items = drag && sel ? d.items.map((it) => (sel.ids.has(it.id) ? translateItem(it, drag.dx, drag.dy) : it))
         : rs && sel ? d.items.map((it) => (sel.ids.has(it.id) ? scaleItem(it, rs.ax, rs.ay, rs.s) : it))
         : d.items
-      drawItems(ctx, live.current.stroke ? [...items, live.current.stroke] : items, pal, draw)
+      const shown = editingId.current ? items.filter((it) => it.id !== editingId.current) : items // text being edited is in the text box
+      drawItems(ctx, live.current.stroke ? [...shown, live.current.stroke] : shown, pal, draw)
       // Selection box with corner handles (drag a corner to resize).
       if (sel && sel.ids.size && !live.current.lasso) {
         const box = unionBox(items.filter((it) => sel.ids.has(it.id)).map(bounds))
@@ -183,6 +197,8 @@ function BoardCanvas({ path }: { path: string }) {
     })
   }, [pal, sel, theme])
   useEffect(draw, [doc, draw])
+  const editingKey = textEdit?.id
+  useEffect(draw, [editingKey, draw]) // hide/show the text being edited
   // Redraw on resize — including when the board becomes visible after switching from Code mode.
   // Depends on `loaded` because the canvas only exists once the board file has loaded.
   const loaded = doc !== null
@@ -250,11 +266,19 @@ function BoardCanvas({ path }: { path: string }) {
     }
     const [x, y] = toWorld(e.clientX, e.clientY)
     const pressure = e.pointerType === 'pen' ? e.pressure || 0.5 : 0.5
+    // The eraser end of a stylus (or its eraser button) erases, whatever tool is picked.
+    const penEraser = e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32) !== 0)
 
-    if (tool === 'pen' || tool === 'highlighter') {
+    if (penEraser) {
+      setSel(null)
+      erasing.current = true
+      eraseAt(x, y, true)
+    } else if (tool === 'pen' || tool === 'highlighter') {
       setSel(null)
       const hl = tool === 'highlighter'
-      live.current.stroke = { id: newId(), kind: tool, color: hl ? hlColor : penColor, size: hl ? SIZES.highlighter[hlSize] : SIZES.pen[penSize], points: [roundPt(x, y, pressure)] }
+      live.current.stroke = hl
+        ? { id: newId(), kind: tool, color: hlColor, size: SIZES.highlighter[hlSize], points: [roundPt(x, y, pressure)] }
+        : { id: newId(), kind: tool, color: penColor, size: SIZES.pen[penSize], pen: penStyle, points: [roundPt(x, y, pressure)] }
     } else if (tool === 'eraser') {
       setSel(null)
       erasing.current = true
@@ -274,8 +298,29 @@ function BoardCanvas({ path }: { path: string }) {
         live.current.lasso = [[x, y]]
       }
     } else if (tool === 'text') {
-      setTextEdit({ x, y, value: '' })
+      // Tap existing text to edit it; tap empty space to start new text.
+      const hit = itemAt(d.items, x, y, 4 / view.current.zoom)
+      e.preventDefault() // keep focus handling ours: the open text box is committed right here
+      commitText()
+      if (hit?.kind === 'text') editText(hit)
+      else setTextEdit({ x, y, value: '', size: SIZES.text[textSize], color: penColor })
     }
+    draw()
+  }
+
+  /** Double-click (lasso, text or hand tool): edit text, or open a graph live. */
+  const onDoubleClick = (e: React.MouseEvent) => {
+    const d = docRef.current
+    if (!d || !(tool === 'lasso' || tool === 'text' || tool === 'hand')) return
+    const [x, y] = toWorld(e.clientX, e.clientY)
+    const hit = itemAt(d.items, x, y, 4 / view.current.zoom)
+    if (hit?.kind === 'text') editText(hit)
+    else if (hit?.kind === 'image' && hit.plot) setLiveGraph({ id: hit.id, spec: hit.plot })
+  }
+
+  const editText = (it: TextItem) => {
+    setSel(null)
+    setTextEdit({ x: it.x, y: it.y, value: it.text, size: it.size, color: it.color, id: it.id })
     draw()
   }
 
@@ -356,6 +401,7 @@ function BoardCanvas({ path }: { path: string }) {
     if (erasing.current) { erasing.current = false; eraseEnd() }
     const lassoSize = lasso ? Math.max(...lasso.map((p) => Math.abs(p[0] - lasso[0][0]) + Math.abs(p[1] - lasso[0][1]))) : 0
     if (stroke) {
+      lastStrokeEnd.current = Date.now()
       if (stroke.points.length === 1) stroke.points.push([stroke.points[0][0] + 0.1, stroke.points[0][1] + 0.1, stroke.points[0][2]]) // a dot
       commit([...d.items, stroke])
     } else if (resize && sel) {
@@ -515,10 +561,32 @@ function BoardCanvas({ path }: { path: string }) {
   }
 
   const commitText = () => {
-    if (textEdit && textEdit.value.trim() && doc) {
-      commit([...doc.items, { id: newId(), kind: 'text', x: textEdit.x, y: textEdit.y, text: textEdit.value, color: penColor, size: 20 }])
+    const d = docRef.current, edit = textRef.current
+    if (!edit) return
+    textRef.current = null
+    if (d) {
+      const { id, value, x, y, size, color } = edit
+      if (id) {
+        const old = d.items.find((it) => it.id === id) as TextItem | undefined
+        // Emptied: removed. Unchanged: nothing to undo.
+        if (!value.trim()) commit(d.items.filter((it) => it.id !== id))
+        else if (old && old.text !== value) commit(d.items.map((it) => (it.id === id ? { ...old, text: value, size, color } : it)))
+      } else if (value.trim()) {
+        commit([...d.items, { id: newId(), kind: 'text', x, y, text: value, color, size }])
+      }
     }
     setTextEdit(null)
+    draw()
+  }
+
+  /** Change the selected text (size or color) in one undo step. */
+  const restyleText = (f: (t: TextItem) => TextItem) => {
+    const d = docRef.current
+    if (!d || !sel) return
+    const next = d.items.map((it) => (sel.ids.has(it.id) && it.kind === 'text' ? f(it) : it))
+    commit(next)
+    const box = unionBox(next.filter((it) => sel.ids.has(it.id)).map(bounds))
+    if (box) setSel({ ...sel, poly: [[box.x, box.y], [box.x + box.w, box.y], [box.x + box.w, box.y + box.h], [box.x, box.y + box.h]] })
   }
 
   if (!doc) return <div className="board-empty muted">Loading board…</div>
@@ -527,6 +595,8 @@ function BoardCanvas({ path }: { path: string }) {
   const selectedGraph = sel && sel.ids.size === 1
     ? (doc.items.find((it) => sel.ids.has(it.id) && it.kind === 'image' && it.plot) as ImageItem | undefined)
     : undefined
+  const selectedTexts = sel ? doc.items.filter((it): it is TextItem => sel.ids.has(it.id) && it.kind === 'text') : []
+  const selectedText = sel && sel.ids.size === 1 ? selectedTexts[0] : undefined
   // Floating AI menu: above the lasso, or below it when there's no room under the toolbar.
   let menuPos: { left: number; top: number; below: boolean } | null = null
   if (sel) {
@@ -540,14 +610,19 @@ function BoardCanvas({ path }: { path: string }) {
   }
   const colors = tool === 'highlighter' ? HIGHLIGHT_COLORS : PEN_COLORS
   const activeColor = tool === 'highlighter' ? hlColor : penColor
-  const sizes = tool === 'highlighter' ? SIZES.highlighter : SIZES.pen
-  const activeSize = tool === 'highlighter' ? hlSize : penSize
+  const sizes = tool === 'highlighter' ? SIZES.highlighter : tool === 'text' ? SIZES.text : SIZES.pen
+  const activeSize = tool === 'highlighter' ? hlSize : tool === 'text' ? textSize : penSize
+  const setSize = (i: number) => (tool === 'highlighter' ? setHlSize(i) : tool === 'text' ? setTextSize(i) : setPenSize(i))
 
   return (
     <div className="board" ref={wrap}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => { e.preventDefault(); const f = [...e.dataTransfer.files].find((x) => x.type.startsWith('image/')); if (f) addImage(f) }}>
-      <div className="board-toolbar" role="toolbar" aria-label="Whiteboard tools">
+      <div className="board-toolbar" role="toolbar" aria-label="Whiteboard tools"
+        // A stylus landing on the toolbar right after a stroke is almost always an accident
+        // (writing near the top edge), so it's ignored instead of switching tools.
+        onPointerDownCapture={(e) => { if (e.pointerType === 'pen' && Date.now() - lastStrokeEnd.current < 400) { e.preventDefault(); e.stopPropagation(); blockClick.current = true } }}
+        onClickCapture={(e) => { if (blockClick.current) { blockClick.current = false; e.preventDefault(); e.stopPropagation() } }}>
         <div className="tb-seg">
           {TOOLS.map((t) => (
             <button key={t.id} className={`tool ${tool === t.id ? 'on' : ''}`} title={`${t.label} (${t.key === ' ' ? 'Space' : t.key.toUpperCase()})`}
@@ -558,12 +633,25 @@ function BoardCanvas({ path }: { path: string }) {
         </div>
         {(tool === 'pen' || tool === 'highlighter' || tool === 'text') && (
           <>
+            {tool === 'pen' && (
+              <>
+                <span className="tb-div" />
+                <div className="tb-seg pen-types" role="radiogroup" aria-label="Pen type">
+                  {(Object.keys(PEN_STYLES) as PenStyle[]).map((k) => (
+                    <button key={k} role="radio" aria-checked={penStyle === k} className={`tool pen-type ${penStyle === k ? 'on' : ''}`} title={PEN_STYLES[k].hint} onClick={() => setPenStyle(k)}>
+                      {PEN_STYLES[k].label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             <span className="tb-div" />
             <div className="tb-seg">
               {sizes.map((s, i) => (
-                <button key={s} className={`tool size ${activeSize === i ? 'on' : ''}`} title="Thickness"
-                  onClick={() => (tool === 'highlighter' ? setHlSize(i) : setPenSize(i))}>
-                  <span className="size-dot" style={{ width: 4 + i * 4, height: 4 + i * 4 }} />
+                <button key={s} className={`tool size ${activeSize === i ? 'on' : ''}`} title={tool === 'text' ? `Text size ${s}` : 'Thickness'} onClick={() => setSize(i)}>
+                  {tool === 'text'
+                    ? <span className="size-a" style={{ fontSize: 10 + i * 3 }}>A</span>
+                    : <span className="size-dot" style={{ width: 3 + i * 3, height: 3 + i * 3 }} />}
                 </button>
               ))}
             </div>
@@ -599,14 +687,16 @@ function BoardCanvas({ path }: { path: string }) {
 
       <canvas ref={canvas} className={`board-canvas tool-${tool}`}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
-        onWheel={onWheel} onContextMenu={(e) => e.preventDefault()} />
+        onWheel={onWheel} onContextMenu={(e) => e.preventDefault()} onDoubleClick={onDoubleClick} />
 
       {textEdit && (() => {
         const [sx, sy] = toScreen(textEdit.x, textEdit.y)
         return (
-          <textarea className="board-text" autoFocus value={textEdit.value} style={{ left: sx, top: sy, fontSize: 20 * view.current.zoom, color: penColor === INK ? pal.ink : penColor }}
+          <textarea key={textEdit.id ?? `${textEdit.x},${textEdit.y}`} className="board-text" autoFocus value={textEdit.value} rows={Math.max(1, textEdit.value.split('\n').length)}
+            style={{ left: sx, top: sy, fontSize: textEdit.size * view.current.zoom, color: textEdit.color === INK ? pal.ink : textEdit.color }}
             placeholder="Type…" onChange={(e) => setTextEdit({ ...textEdit, value: e.target.value })} onBlur={commitText}
-            onKeyDown={(e) => { if (e.key === 'Escape') setTextEdit(null); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) commitText() }} />
+            onFocus={(e) => { const t = e.target; t.setSelectionRange(t.value.length, t.value.length) }}
+            onKeyDown={(e) => { if (e.key === 'Escape') { textRef.current = null; setTextEdit(null); draw() } if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) commitText() }} />
         )
       })()}
 
@@ -614,6 +704,20 @@ function BoardCanvas({ path }: { path: string }) {
         <div className={`ai-pop ${menuPos.below ? 'below' : ''}`} style={{ left: menuPos.left, top: menuPos.top }} onPointerDown={(e) => e.stopPropagation()}>
           {!asking ? (
             <>
+              {selectedText && (
+                <button className="ai-btn primary" onClick={() => editText(selectedText)} title="Change the words (or double-click the text)"><Type size={14} /> Edit text</button>
+              )}
+              {selectedTexts.length > 0 && (
+                <>
+                  <button className="ai-btn icon" title="Smaller text" onClick={() => restyleText((t) => ({ ...t, size: Math.max(8, Math.round(t.size / 1.2)) }))}><AArrowDown size={15} /></button>
+                  <button className="ai-btn icon" title="Bigger text" onClick={() => restyleText((t) => ({ ...t, size: Math.min(160, Math.round(t.size * 1.2)) }))}><AArrowUp size={15} /></button>
+                  {PEN_COLORS.map((c) => (
+                    <button key={c} className={`swatch small ${selectedTexts.every((t) => t.color === c) ? 'on' : ''}`} title={c === INK ? 'Ink' : c}
+                      style={{ background: c === INK ? pal.ink : c }} onClick={() => restyleText((t) => ({ ...t, color: c }))} />
+                  ))}
+                  <span className="tb-div" />
+                </>
+              )}
               {selectedGraph && (
                 <>
                   <button className="ai-btn primary" onClick={() => setLiveGraph({ id: selectedGraph.id, spec: selectedGraph.plot! })} title="Pan, zoom, trace and animate it"><LineChart size={14} /> Open live graph</button>
