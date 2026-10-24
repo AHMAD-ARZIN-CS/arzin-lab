@@ -1,0 +1,53 @@
+{
+  "name": "chalkbyte",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A local coding notebook: write code, run it for real in a sandbox, watch it execute, and circle anything on a whiteboard to ask AI about it.",
+  "license": "MIT",
+  "author": "Ahmad Sapy",
+  "repository": { "type": "git", "url": "https://github.com/AHMAD-ARZIN-CS/chalkbyte.git" },
+  "homepage": "https://github.com/AHMAD-ARZIN-CS/chalkbyte#readme",
+  "bugs": { "url": "https://github.com/AHMAD-ARZIN-CS/chalkbyte/issues" },
+  "keywords": ["learn-to-code", "education", "whiteboard", "sandbox", "visualizer", "c++", "claude"],
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c cyan,magenta \"tsx watch --clear-screen=false server/src/index.ts\" \"vite\"",
+    "build": "tsc -p web/tsconfig.json && tsc -p server/tsconfig.json && vite build",
+    "start": "tsx server/src/index.ts",
+    "typecheck": "tsc -p web/tsconfig.json && tsc -p server/tsconfig.json",
+    "test:smoke": "node scripts/smoke.mjs",
+    "test:boards": "node scripts/board-storage-test.mjs"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "dockerode": "^5.0.1",
+    "dompurify": "^3.4.16",
+    "express": "^5.2.1",
+    "katex": "0.18.9",
+    "lucide-react": "1.47.0",
+    "marked": "^18.1.0",
+    "mathjs": "15.2.0",
+    "mermaid": "12.0.0",
+    "monaco-editor": "^0.57.0",
+    "perfect-freehand": "1.2.3",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-resizable-panels": "^4.14.3",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^4.0.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.4"
+  }
+}

@@ -1,18 +1,15 @@
 # dependencies & builds
 node_modules/
 dist/
+*.tsbuildinfo
 __pycache__/
 *.pyc
-.venv/
 
-# generated output (re-create by running the scripts)
-modules/**/out/
+# your code and per-machine settings: never part of the app repo
+my-code/
+chalkbyte.local.json
 
-# Godot
-.godot/
-*.translation
-
-# secrets — never commit
+# secrets: never commit
 .env
 .env.*
 !.env.example
@@ -25,7 +22,3 @@ Thumbs.db
 desktop.ini
 *.log
 .vscode/
-
-# workspace
-my-code/.lab/
-workspace/web/dist/

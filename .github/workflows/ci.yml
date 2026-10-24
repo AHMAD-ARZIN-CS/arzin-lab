@@ -1,0 +1,23 @@
+# Type-checks and builds Chalkbyte on every push and pull request.
+# (The end-to-end tests need Docker and a running server, so they run locally: see CONTRIBUTING.md.)
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build

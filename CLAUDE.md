@@ -1,54 +1,36 @@
-# Arzin Lab: instructions for Claude and other agents
+# Chalkbyte: instructions for Claude and other coding agents
 
-## Purpose
-Ahmad's coding and learning lab. Ahmad is a CS student transferring to UC Berkeley and studying for Security+.
-He is learning C++ fundamentals now, working toward LeetCode problems and larger projects.
-The goal is working code **plus understanding**: he writes code, runs it, sees what happens, and understands it.
-Explain concepts as you build: plain English first, then the details. Ask what's unclear before building something big.
+## What this is
+Chalkbyte is a local coding notebook for people learning to program: write code, run it for real in a Docker sandbox,
+watch it execute step by step, and use a whiteboard where you can circle anything and ask the AI about it.
+The goal is working code **plus understanding**. See `README.md` for the full feature guide.
 
 ## Layout
-- `workspace/`: **the main product**, a local coding workspace (see `workspace/README.md`).
-  - `server/src/`: Node server: files API, Docker sandbox, run/stop/terminal/trace/tests (WebSocket), AI via the `claude` CLI,
-    problem library, lectures, problem generation, saved explanations.
-  - `web/src/`: React + Monaco + xterm.js UI. State and actions live in `web/src/lib/store.ts`; whiteboard engine in `web/src/lib/board.ts`.
-  - `sandbox/`: Dockerfile and the sandbox tools (`tools/gdbtrace.py` for C/C++, `tools/pytrace.py` for Python, `tools/slides.py` for lectures).
-  - `library/`: verified practice problems (`src/<slug>/`, built into `library.json` by `scripts/build-library.ts`).
-  - `seed/`: starter files and practice problems, copied into `my-code/` on first start.
-- `my-code/`: Ahmad's own code, practice, boards, notes, lectures and saved explanations (`.chats/`).
-  `.lab/` inside it holds history, trash and scratch files (gitignored). **Don't edit or commit his files unless he asks.**
-- `projects/`: **mini-projects** (see below).
-- `modules/`, `hub/`, `scenes/`: an earlier 3D learning experiment (pure-Python renderer + three.js hub). Reusable for 3D work.
+- `server/src/`: Node server. Files API, Docker sandbox, run/stop/terminal/trace/tests over WebSocket, AI via the `claude` CLI
+  (`ai.ts`), problem library, lectures, problem generation, saved explanations, segmented board storage (`boards.ts`).
+  Paths and settings: `config.ts` (code folder = `my-code/` or `chalkbyte.local.json` → `codeDir`).
+- `web/src/`: React + Monaco + xterm.js UI. State and actions in `lib/store.ts`; whiteboard engine in `lib/board.ts`;
+  graphs in `lib/plot.ts` and `components/InteractivePlot.tsx`; textbook notation for formulas in `lib/mathfmt.ts`.
+- `sandbox/`: the Dockerfile and sandbox tools (`tools/gdbtrace.py` for C/C++, `tools/pytrace.py` for Python, `tools/slides.py`).
+- `library/`: verified practice problems (`src/<slug>/`, built into `library.json` by `scripts/build-library.ts`).
+- `seed/`: starter files copied into the code folder on first start.
+- The user's code folder (`my-code/` by default) is **theirs**: gitignored, never edited or committed unless they ask.
 
-## Mini-projects (`projects/<name>/`)
-Arzin Lab holds many mini-projects. When Ahmad starts a new one:
-- Create `projects/<short-kebab-name>/` (create `projects/` if it doesn't exist). Everything for that project lives there.
-- Give it a `README.md` covering: the goal, how to run/open it, the parts and how they work, and **what Ahmad learned** (concepts,
-  formulas, decisions and why). Keep the README updated as the project grows.
-- Add a line for it to the "Mini-projects" list in the root `README.md`.
-- Reuse what the lab already has instead of rebuilding: the workspace sandbox for running code, the visualizer, boards
-  (for sketches and circling questions), and the 3D hub/renderer for 3D models.
-- Don't change `workspace/` from inside a mini-project unless the change helps the workspace in general. If you do,
-  run the checks below.
-- Commit each working step with a clear message (`<project>: what changed`) and push.
-
-## How to work here
-- Keep the workspace's central flow working: create/upload → edit → run with input → see output/errors → visualize → explain → save/reopen.
+## Rules
+- Keep the central flow working: create/upload → edit → run with input → see output/errors → visualize → explain → save/reopen.
 - Never fake execution or results. Output must come from really running things. If something isn't supported or failed, say so.
-- AI-proposed code is always shown as a diff and never applied without Ahmad clicking Apply. The original is snapshotted first.
+- AI-proposed code is always shown as a diff and never applied without the user clicking Apply. The original is snapshotted first.
 - In practice mode, don't reveal solutions unless explicitly asked (hint level 4).
-- When explaining a concept, start in plain English, use his code and real values, then go deeper on request.
-- Match the code style: small focused files, comments that teach, no unnecessary dependencies.
-- Before adding a library, check its license and that it's maintained. Prefer open source.
+- Explanations: plain English first, using the learner's own code and real values, then go deeper on request.
+- Small focused files, comments that teach, no unnecessary dependencies. Check a library's license and maintenance before adding it.
 
-## Commands and checks
-- Ahmad runs `cd workspace && npm run dev`: server on :4317, UI on http://localhost:5173 (needs Docker Desktop running).
-- After changing workspace code: `npm run typecheck`. After server/sandbox changes, also `node scripts/smoke.mjs`
-  (25 end-to-end checks against the real sandbox).
-- When testing in the browser, **never draw on or modify his real boards or files**. Use throwaway ones and clean up afterwards.
-- Edit source files with the Edit/Write tools, not PowerShell regex rewrites (they once corrupted UTF-8).
+## Checks
+- `npm run dev`: server on :4317, UI on http://localhost:5173 (Docker must be running).
+- After code changes: `npm run typecheck`. After server or sandbox changes, also `npm run test:smoke` and `npm run test:boards`
+  (with the dev server running).
+- When testing in a browser, never modify the user's real boards or files. Use throwaway ones and clean up afterwards.
 
 ## Safety
-- The server runs code: keep it bound to 127.0.0.1, keep the Host/X-Lab/Origin checks, and keep paths confined to `my-code/`.
-- Never use `eval`/`innerHTML` with AI or file content (DOMPurify is used for Markdown).
-- Never commit secrets. Ahmad's home folder (`C:\Users\arzin`) is ALSO a git repo (it contains `.ssh`), so never run git against it:
-  only run git inside the Arzin Lab folder.
+- The server runs code: keep it bound to 127.0.0.1, keep the Host/X-Lab/Origin checks, and keep paths confined to the code folder.
+- Never use `eval`/`innerHTML` with AI or file content (DOMPurify is used for Markdown; KaTeX with trust:false; mermaid strict).
+- Never commit secrets or the user's code folder.
